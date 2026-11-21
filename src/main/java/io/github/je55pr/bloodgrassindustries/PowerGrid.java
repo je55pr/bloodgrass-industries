@@ -2,12 +2,14 @@ package io.github.je55pr.bloodgrassindustries;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -23,6 +25,7 @@ final class PowerGrid {
     private final Set<BlockPos> poles = new HashSet<>();
     private final Map<BlockPos, BoundingBox> generators = new HashMap<>();
     private final Map<BlockPos, List<BlockPos>> generatorsByPole = new HashMap<>();
+    private final Map<PoweredFurnace, List<BlockPos>> generatorsByFurnace = new WeakHashMap<>();
     private boolean topologyChanged = true;
 
     static PowerGrid of(ServerLevel level) {
@@ -46,15 +49,12 @@ final class PowerGrid {
         topologyChanged |= generators.remove(pos) != null;
     }
 
-    boolean supply(ServerLevel level, BoundingBox machine) {
-        BlockPos pole = coveringPole(machine);
-        if (pole == null) {
-            return false;
-        }
+    boolean supply(ServerLevel level, PoweredFurnace furnace) {
         if (topologyChanged) {
             rebuild();
         }
-        for (BlockPos pos : generatorsByPole.get(pole)) {
+        List<BlockPos> candidates = generatorsByFurnace.computeIfAbsent(furnace, machine -> findGenerators(machine.bounds()));
+        for (BlockPos pos : candidates) {
             if (level.isLoaded(pos) && level.getBlockEntity(pos) instanceof BurnerGenerator generator
                     && generator.supply(level.getGameTime())) {
                 return true;
@@ -64,31 +64,39 @@ final class PowerGrid {
     }
 
     boolean hasCoverage(BoundingBox machine) {
-        return coveringPole(machine) != null;
+        return coveringPoles(machine).findAny().isPresent();
     }
 
-    private BlockPos coveringPole(BoundingBox machine) {
-        BlockPos nearest = null;
-        int nearestDistance = Integer.MAX_VALUE;
-        for (BlockPos pole : poles) {
-            int dx = distanceToRange(pole.getX(), machine.minX(), machine.maxX());
-            int dy = distanceToRange(pole.getY(), machine.minY(), machine.maxY());
-            int dz = distanceToRange(pole.getZ(), machine.minZ(), machine.maxZ());
-            if (dx > HORIZONTAL_COVERAGE || dz > HORIZONTAL_COVERAGE || dy > VERTICAL_COVERAGE) {
-                continue;
-            }
-            int distance = dx * dx + dy * dy + dz * dz;
-            if (nearest == null || distance < nearestDistance
-                    || (distance == nearestDistance && pole.compareTo(nearest) < 0)) {
-                nearest = pole;
-                nearestDistance = distance;
-            }
+    private List<BlockPos> findGenerators(BoundingBox machine) {
+        return coveringPoles(machine).sorted(coverageOrder(machine))
+                .map(generatorsByPole::get)
+                .distinct()
+                .flatMap(List::stream)
+                .toList();
+    }
+
+    private Stream<BlockPos> coveringPoles(BoundingBox machine) {
+        return poles.stream().filter(pole -> coverageDistance(pole, machine) >= 0);
+    }
+
+    private static Comparator<BlockPos> coverageOrder(BoundingBox machine) {
+        return Comparator.comparingInt((BlockPos pole) -> coverageDistance(pole, machine))
+                .thenComparing(Comparator.naturalOrder());
+    }
+
+    private static int coverageDistance(BlockPos pole, BoundingBox machine) {
+        int dx = distanceToRange(pole.getX(), machine.minX(), machine.maxX());
+        int dy = distanceToRange(pole.getY(), machine.minY(), machine.maxY());
+        int dz = distanceToRange(pole.getZ(), machine.minZ(), machine.maxZ());
+        if (dx > HORIZONTAL_COVERAGE || dz > HORIZONTAL_COVERAGE || dy > VERTICAL_COVERAGE) {
+            return -1;
         }
-        return nearest;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private void rebuild() {
         generatorsByPole.clear();
+        generatorsByFurnace.clear();
         Set<BlockPos> remaining = new HashSet<>(poles);
         while (!remaining.isEmpty()) {
             BlockPos start = remaining.iterator().next();
@@ -109,10 +117,8 @@ final class PowerGrid {
             }
         }
         for (BlockPos generator : generators.keySet().stream().sorted().toList()) {
-            BlockPos pole = coveringPole(generators.get(generator));
-            if (pole != null) {
-                generatorsByPole.get(pole).add(generator);
-            }
+            BoundingBox bounds = generators.get(generator);
+            coveringPoles(bounds).min(coverageOrder(bounds)).ifPresent(pole -> generatorsByPole.get(pole).add(generator));
         }
         topologyChanged = false;
     }

@@ -40,7 +40,7 @@ final class PoweredFurnace extends MachineBlockEntity {
         }
         SmeltingRecipe smelting = recipe.get().value();
         ItemStack result = smelting.assemble(recipeInput, level.registryAccess());
-        if (result.isEmpty() || !canStoreOutput(result) || !PowerGrid.of(level).supply(level, bounds())) {
+        if (result.isEmpty() || !canStoreOutput(result) || !PowerGrid.of(level).supply(level, this)) {
             return false;
         }
         if (++progress >= smelting.getCookingTime()) {

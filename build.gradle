@@ -12,15 +12,8 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
-sourceSets {
-    gameTest {
-        compileClasspath += sourceSets.main.output
-    }
-}
-
 neoForge {
     version = neo_version
-    addModdingDependenciesTo sourceSets.gameTest
 
     runs {
         client {
@@ -30,23 +23,13 @@ neoForge {
             server()
             programArgument '--nogui'
         }
-        gameTestServer {
-            type = 'gameTestServer'
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
-            gameDirectory = project.file('run/gametest')
-        }
     }
 
     mods {
         "${mod_id}" {
             sourceSet sourceSets.main
-            sourceSet sourceSets.gameTest
         }
     }
-}
-
-tasks.named('runGameTestServer') {
-    dependsOn tasks.named('gameTestClasses')
 }
 
 tasks.named('processResources', ProcessResources) {
