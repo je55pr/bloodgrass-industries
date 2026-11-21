@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "section=0": {
+      "model": "bloodgrass_industries:block/power_pole_base"
+    },
+    "section=1": {
+      "model": "bloodgrass_industries:block/power_pole_post"
+    },
+    "section=2": {
+      "model": "bloodgrass_industries:block/power_pole_post"
+    },
+    "section=3": {
+      "model": "bloodgrass_industries:block/power_pole_top"
+    }
+  }
+}
