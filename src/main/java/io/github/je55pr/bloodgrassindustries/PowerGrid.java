@@ -118,7 +118,12 @@ final class PowerGrid {
         }
         for (BlockPos generator : generators.keySet().stream().sorted().toList()) {
             BoundingBox bounds = generators.get(generator);
-            coveringPoles(bounds).min(coverageOrder(bounds)).ifPresent(pole -> generatorsByPole.get(pole).add(generator));
+            coveringPoles(bounds).forEach(pole -> {
+                List<BlockPos> circuitGenerators = generatorsByPole.get(pole);
+                if (!circuitGenerators.contains(generator)) {
+                    circuitGenerators.add(generator);
+                }
+            });
         }
         topologyChanged = false;
     }
