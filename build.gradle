@@ -1,0 +1,46 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+group = 'io.github.je55pr.bloodgrassindustries'
+version = mod_version
+
+base {
+    archivesName = 'bloodgrass-industries'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = neo_version
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+tasks.named('processResources', ProcessResources) {
+    def metadata = [mod_id: mod_id, mod_version: mod_version,
+                    minecraft_version: minecraft_version, neo_version: neo_version]
+    inputs.properties(metadata)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(metadata)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
