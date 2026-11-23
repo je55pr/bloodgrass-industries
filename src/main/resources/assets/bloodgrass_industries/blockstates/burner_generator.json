@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "lit=false": {
+      "model": "bloodgrass_industries:block/burner_generator"
+    },
+    "lit=true": {
+      "model": "bloodgrass_industries:block/burner_generator_on"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "lit=false": {
+      "model": "bloodgrass_industries:block/powered_furnace"
+    },
+    "lit=true": {
+      "model": "bloodgrass_industries:block/powered_furnace_on"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "block.bloodgrass_industries.power_pole": "Power Pole",
+  "block.bloodgrass_industries.burner_generator": "Burner Generator",
+  "block.bloodgrass_industries.powered_furnace": "Powered Furnace",
+  "message.bloodgrass_industries.pole_links": "Pole links: %s",
+  "message.bloodgrass_industries.covered": "In pole coverage",
+  "message.bloodgrass_industries.uncovered": "Outside pole coverage",
+  "message.bloodgrass_industries.input_rejected": "Input rejected or slot full",
+  "message.bloodgrass_industries.generator_status": "%s | Fuel items: %s | Fuel ticks: %s",
+  "message.bloodgrass_industries.furnace_status": "%s | Input items: %s | Smelting ticks: %s"
+}
