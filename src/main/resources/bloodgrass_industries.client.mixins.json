@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "io.github.je55pr.bloodgrassindustries.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["QuarryChunkMixin", "QuarryKeyboardMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

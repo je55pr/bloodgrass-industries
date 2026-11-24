@@ -1,5 +1,6 @@
 {
   "block.bloodgrass_industries.power_pole": "Power Pole",
+  "block.bloodgrass_industries.quarry": "Quarry",
   "block.bloodgrass_industries.burner_generator": "Burner Generator",
   "block.bloodgrass_industries.powered_furnace": "Powered Furnace",
   "message.bloodgrass_industries.pole_links": "Pole links: %s",
