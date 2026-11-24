@@ -1,5 +1,7 @@
 package io.github.je55pr.bloodgrassindustries;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -25,14 +27,19 @@ public final class QuarryRenderCut {
         Snapshot previous = active;
         Snapshot next = plan == null ? null : new Snapshot(level, origin, plan, finish);
         active = next;
-        if (game.level != level) {
+        if (game.level != level || (previous == null && next == null)) {
             return;
         }
+        LongSet dirty = new LongOpenHashSet();
         if (previous != null && previous.level == level) {
-            previous.rebuild(game);
+            previous.collectDirtySections(game, dirty);
         }
         if (next != null) {
-            next.rebuild(game);
+            next.collectDirtySections(game, dirty);
+        }
+        for (var sections = dirty.iterator(); sections.hasNext(); ) {
+            long section = sections.nextLong();
+            game.levelRenderer.setSectionDirtyWithNeighbors(SectionPos.x(section), SectionPos.y(section), SectionPos.z(section));
         }
         game.levelRenderer.needsUpdate();
     }
@@ -64,7 +71,7 @@ public final class QuarryRenderCut {
             return plan.floorAt(pos.getX() - origin.getX(), pos.getZ() - origin.getZ());
         }
 
-        private void rebuild(Minecraft game) {
+        private void collectDirtySections(Minecraft game, LongSet dirty) {
             if (game.player == null) {
                 return;
             }
@@ -104,7 +111,7 @@ public final class QuarryRenderCut {
                     }
                     if (lowest <= highest) {
                         for (int y = SectionPos.blockToSectionCoord(lowest); y <= SectionPos.blockToSectionCoord(highest + 1); y++) {
-                            game.levelRenderer.setSectionDirtyWithNeighbors(cx, y, cz);
+                            dirty.add(SectionPos.asLong(cx, y, cz));
                         }
                     }
                 }

@@ -38,6 +38,10 @@ final class QuarryMaterials {
             return road == Blocks.AIR && wall == Blocks.AIR;
         }
 
+        Block material(QuarryPlan.Surface surface) {
+            return surface == QuarryPlan.Surface.WALL ? wall : road;
+        }
+
         CompoundTag save() {
             CompoundTag tag = new CompoundTag();
             tag.putString("Road", blockId(road));
@@ -150,7 +154,6 @@ final class QuarryMaterials {
                 .withParameter(LootContextParams.BLOCK_STATE, state)
                 .withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(pos))
                 .withParameter(LootContextParams.TOOL, tool)
-                .withOptionalParameter(LootContextParams.BLOCK_ENTITY, state.hasBlockEntity() ? level.getBlockEntity(pos) : null)
                 .create(LootContextParamSets.BLOCK);
         var table = level.getServer().reloadableRegistries().getLootTable(state.getBlock().getLootTable());
         Map<Item, Long> items = new HashMap<>();
@@ -163,7 +166,7 @@ final class QuarryMaterials {
 
     void record(BlockState state, Map<Item, Long> drops) {
         Block block = state.getBlock();
-        if (!state.hasBlockEntity() && usable(block)) {
+        if (usable(block)) {
             batches.merge(new Yield(block, Map.copyOf(drops)), 1L, Long::sum);
         }
         drops.forEach((item, count) -> add(output, item, count));
@@ -260,8 +263,8 @@ final class QuarryMaterials {
 
     private static boolean usable(Block block) {
         BlockState state = block.defaultBlockState();
-        return block.asItem() instanceof BlockItem item && item.getBlock() == block && !state.hasBlockEntity()
-                && state.getDestroySpeed(EmptyBlockGetter.INSTANCE, BlockPos.ZERO) >= 0
+        return block.asItem() instanceof BlockItem item && item.getBlock() == block
+                && QuarryPlan.canExcavate(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, state)
                 && state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
     }
 

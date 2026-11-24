@@ -164,19 +164,47 @@ final class QuarryPlan {
         int floor = floorAt(x, z);
         int y = pos.getY();
         if (y > floor) {
-            return state.getDestroySpeed(world, pos) >= 0 ? Blocks.AIR.defaultBlockState() : state;
+            return canExcavate(world, pos, state) ? Blocks.AIR.defaultBlockState() : state;
         }
         if (floor == OUTSIDE || finish.isNatural() || y < floor - MAX_SETTING) {
             return state;
         }
         int bottom = wallBottom(x, z, floor);
-        Block material = y > bottom ? finish.wall() : y == floor ? finish.road() : Blocks.AIR;
+        Surface surface = surfaceAt(y, floor, bottom);
+        if (surface == null) {
+            return state;
+        }
+        Block material = finish.material(surface);
         return material != Blocks.AIR && !state.is(material) && canFinish(world, pos, state)
                 ? material.defaultBlockState() : state;
     }
 
+    enum Surface { ROAD, WALL }
+
+    static Surface surfaceAt(int y, int floor, int wallBottom) {
+        if (y > floor) {
+            return null;
+        }
+        if (y > wallBottom) {
+            // The wall finish includes the terrace lip.
+            return Surface.WALL;
+        }
+        return y == floor ? Surface.ROAD : null;
+    }
+
+    static boolean canModify(BlockGetter world, BlockPos pos, BlockState state) {
+        Block block = state.getBlock();
+        // Removing one machine or pole part can dismantle the rest beyond the cut.
+        return !(block instanceof MachineBlock) && !(block instanceof PoleBlock) && !state.hasBlockEntity()
+                && state.getDestroySpeed(world, pos) >= 0;
+    }
+
+    static boolean canExcavate(BlockGetter world, BlockPos pos, BlockState state) {
+        return !state.isAir() && canModify(world, pos, state);
+    }
+
     static boolean canFinish(BlockGetter world, BlockPos pos, BlockState state) {
-        return !state.hasBlockEntity() && state.getDestroySpeed(world, pos) >= 0
+        return canExcavate(world, pos, state)
                 && (state.getBlock() instanceof LiquidBlock ? state.getFluidState().isSource()
                 : state.isCollisionShapeFullBlock(world, pos));
     }

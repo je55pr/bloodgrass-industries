@@ -39,6 +39,7 @@ import org.lwjgl.glfw.GLFW;
 @EventBusSubscriber(modid = BloodgrassIndustries.ID, value = Dist.CLIENT)
 public final class QuarryFlyMode {
     private static final int OUTLINE = 0xffffbc55;
+    private static final int PREVIEW_REFRESH_TICKS = 3;
     private static QuarryFlyMode active;
     private static QuarryScreen pending;
 
@@ -49,8 +50,12 @@ public final class QuarryFlyMode {
     private final CameraType previousCameraType;
     private boolean showCut = true;
     private boolean returning;
+    private boolean previewDirty = true;
+    private int previewCooldown;
+    private QuarryPlan renderedPlan;
     private BlockPos target;
     private int field;
+    private String geometryStatus = "";
     private String feedback = "";
 
     private QuarryFlyMode(Minecraft game, QuarryScreen editor) {
@@ -92,7 +97,7 @@ public final class QuarryFlyMode {
             active = new QuarryFlyMode(game, editor);
             game.options.setCameraType(CameraType.FIRST_PERSON);
             game.setScreen(null);
-            active.refreshCut();
+            active.updatePreview();
         }
     }
 
@@ -121,7 +126,7 @@ public final class QuarryFlyMode {
                 case GLFW.GLFW_KEY_TAB -> mode.field = (mode.field + 1) % QuarryScreen.LABELS.length;
                 case GLFW.GLFW_KEY_V -> {
                     mode.showCut = !mode.showCut;
-                    mode.refreshCut();
+                    mode.queuePreviewUpdate();
                 }
                 case GLFW.GLFW_KEY_Y -> mode.pickBaseY();
                 default -> { }
@@ -156,6 +161,7 @@ public final class QuarryFlyMode {
             mode.finish(false);
             return;
         }
+        mode.updatePreview();
         mode.target = mode.pointedBlock();
     }
 
@@ -168,9 +174,8 @@ public final class QuarryFlyMode {
         if (event.getAction() == GLFW.GLFW_PRESS) {
             if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 active.markCorner();
-            } else if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-                active.editor.undoCorner();
-                active.refreshCut();
+            } else if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && active.editor.undoCorner()) {
+                active.queuePreviewUpdate();
             }
         }
     }
@@ -184,7 +189,7 @@ public final class QuarryFlyMode {
         int dx = picked.getX() - origin.getX();
         int dz = picked.getZ() - origin.getZ();
         if (editor.addCorner(new QuarryPlan.Corner(dx, dz))) {
-            refreshCut();
+            queuePreviewUpdate();
         } else {
             feedback = "Choose a different block. The outline holds up to 64 corners.";
         }
@@ -194,21 +199,41 @@ public final class QuarryFlyMode {
         BlockPos hit = pointedBlock();
         if (hit != null) {
             field = 0;
-            editor.setValue(0, hit.getY());
-            refreshCut();
+            if (editor.setValue(0, hit.getY())) {
+                queuePreviewUpdate();
+            }
         }
     }
 
     private void adjust(int amount) {
         int min = field == 0 ? level.getMinBuildHeight() : 1;
         int max = field == 0 ? level.getMaxBuildHeight() - 1 : QuarryPlan.MAX_SETTING;
-        editor.setValue(field, Mth.clamp(editor.numericValue(field) + amount, min, max));
-        refreshCut();
+        if (editor.setValue(field, Mth.clamp(editor.numericValue(field) + amount, min, max))) {
+            queuePreviewUpdate();
+        }
     }
 
-    private void refreshCut() {
+    private void queuePreviewUpdate() {
         feedback = "";
-        QuarryRenderCut.show(game, level, origin, showCut ? editor.plan() : null, editor.finish());
+        previewDirty = true;
+    }
+
+    private void updatePreview() {
+        if (previewCooldown > 0) {
+            previewCooldown--;
+        }
+        if (!previewDirty || previewCooldown != 0) {
+            return;
+        }
+        previewDirty = false;
+        previewCooldown = PREVIEW_REFRESH_TICKS;
+        QuarryPlan plan = editor.plan();
+        geometryStatus = editor.status();
+        QuarryPlan next = showCut ? plan : null;
+        if (next != renderedPlan) {
+            renderedPlan = next;
+            QuarryRenderCut.show(game, level, origin, next, editor.finish());
+        }
     }
 
     private BlockPos pointedBlock() {
@@ -237,7 +262,7 @@ public final class QuarryFlyMode {
         int width = game.getWindow().getGuiScaledWidth();
         int height = game.getWindow().getGuiScaledHeight();
         graphics.fill(6, 6, Math.min(width - 6, 330), 70, 0xb216191e);
-        graphics.drawString(game.font, showCut && editor.plan() != null ? "Quarry preview" : "Quarry outline",
+        graphics.drawString(game.font, renderedPlan != null ? "Quarry preview" : "Quarry outline",
                 11, 11, OUTLINE);
         graphics.drawString(game.font, "Left click mark   Right click undo   V terrain/cut   Esc return", 11, 22, 0xffeeeeee);
         graphics.drawString(game.font, "Move + look   Jump / sneak up and down   Scroll speed", 11, 33, 0xffeeeeee);
@@ -248,7 +273,7 @@ public final class QuarryFlyMode {
             graphics.drawString(game.font, setting, x, 57, i == field ? OUTLINE : 0xffeeeeee);
             x += game.font.width(setting) + 13;
         }
-        String status = feedback.isEmpty() ? editor.status() : feedback;
+        String status = feedback.isEmpty() ? geometryStatus : feedback;
         graphics.fill(6, height - 25, width - 6, height - 6, 0xb216191e);
         graphics.drawString(game.font, editor.corners().size() + " corners  |  " + status, 11, height - 20, 0xffeeeeee);
         int centerX = width / 2;
@@ -266,7 +291,7 @@ public final class QuarryFlyMode {
 
     private void drawOutline(RenderLevelStageEvent event) {
         List<Vec3> points = new ArrayList<>();
-        QuarryPlan plan = showCut ? editor.plan() : null;
+        QuarryPlan plan = renderedPlan;
         for (QuarryPlan.Corner corner : editor.corners()) {
             BlockPos pos = origin.offset(corner.x(), 0, corner.z());
             int y = level.isLoaded(pos) ? level.getHeight(Heightmap.Types.WORLD_SURFACE, pos.getX(), pos.getZ()) : editor.numericValue(0) + 1;

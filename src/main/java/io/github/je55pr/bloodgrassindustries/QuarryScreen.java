@@ -114,9 +114,14 @@ public final class QuarryScreen extends AbstractContainerScreen<QuarryMenu> {
         };
     }
 
-    void setValue(int field, int value) {
-        values[field] = Integer.toString(value);
+    boolean setValue(int field, int value) {
+        String text = Integer.toString(value);
+        if (text.equals(values[field])) {
+            return false;
+        }
+        values[field] = text;
         dirty = true;
+        return true;
     }
 
     List<QuarryPlan.Corner> corners() {
@@ -132,11 +137,13 @@ public final class QuarryScreen extends AbstractContainerScreen<QuarryMenu> {
         return true;
     }
 
-    void undoCorner() {
-        if (!corners.isEmpty()) {
-            corners.removeLast();
-            dirty = true;
+    boolean undoCorner() {
+        if (corners.isEmpty()) {
+            return false;
         }
+        corners.removeLast();
+        dirty = true;
+        return true;
     }
 
     private void send(boolean cut) {

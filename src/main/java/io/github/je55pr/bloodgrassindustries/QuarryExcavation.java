@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.nbt.CompoundTag;
@@ -22,6 +23,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 final class QuarryExcavation {
     private static final int BLOCKS_PER_TICK = 1_024;
     private static final int SURVEY_BLOCKS_PER_TICK = 4_096;
+    private static final long BATCH_TIME_NANOS = TimeUnit.MILLISECONDS.toNanos(10);
     private static final int UNSTARTED = Integer.MAX_VALUE;
     private static final TicketType<BlockPos> TICKET = TicketType.create("bloodgrass_quarry", Comparator.<BlockPos>naturalOrder(), 80);
 
@@ -135,7 +137,8 @@ final class QuarryExcavation {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         ChunkPos renewed = null;
         LevelChunk chunk = null;
-        while (chunkIndex < totalChunks && budget > 0) {
+        long deadline = System.nanoTime() + BATCH_TIME_NANOS;
+        while (chunkIndex < totalChunks && budget > 0 && System.nanoTime() - deadline < 0) {
             ChunkPos target = new ChunkPos(firstX + chunkIndex % width, firstZ + chunkIndex / width);
             int x = target.getMinBlockX() + (column & 15);
             int z = target.getMinBlockZ() + (column >> 4);
@@ -172,11 +175,11 @@ final class QuarryExcavation {
                 nextY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15);
                 budget--;
             }
-            while (nextY > floor && budget > 0) {
+            while (nextY > floor && budget > 0 && (budget % 32 != 0 || System.nanoTime() - deadline < 0)) {
                 pos.set(x, nextY--, z);
                 budget--;
                 BlockState state = chunk.getBlockState(pos);
-                if (!state.isAir() && state.getDestroySpeed(level, pos) >= 0) {
+                if (QuarryPlan.canExcavate(level, pos, state)) {
                     Map<Item, Long> drops = QuarryMaterials.drops(level, pos, state);
                     if (surveying || level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
                         materials.record(state, drops);
@@ -229,28 +232,29 @@ final class QuarryExcavation {
             if (!QuarryPlan.canFinish(level, pos, existing)) {
                 continue;
             }
-            // The top block of a riser belongs to the wall, including the corner blocks.
-            boolean edge = y > wallBottom;
+            QuarryPlan.Surface surface = QuarryPlan.surfaceAt(y, floor, wallBottom);
             BlockPos below = pos.below();
             boolean unsupported = FallingBlock.isFree(level.getBlockState(below));
             if (phase != Phase.FINISH) {
-                surfaces.add(edge, unsupported, existing.getBlock());
+                surfaces.add(surface == QuarryPlan.Surface.WALL, unsupported, existing.getBlock());
             } else {
-                applyFinish(level, pos, below, edge, unsupported, finish, existing);
+                applyFinish(level, pos, below, surface, unsupported, finish, existing);
             }
         }
         return floor - start + 1;
     }
 
-    private void applyFinish(ServerLevel level, BlockPos pos, BlockPos below, boolean edge, boolean unsupported,
+    private void applyFinish(ServerLevel level, BlockPos pos, BlockPos below, QuarryPlan.Surface surface, boolean unsupported,
                              QuarryMaterials.Finish finish, BlockState existing) {
-        Block material = edge ? finish.wall() : finish.road();
+        boolean edge = surface == QuarryPlan.Surface.WALL;
+        Block material = finish.material(surface);
         boolean swap = material != existing.getBlock();
         if (material == Blocks.AIR || swap && (edge ? spentWall : spentRoad) >= surfaces.cost(edge, material)) {
             return;
         }
         if (material instanceof FallingBlock && unsupported) {
             if (spentSupports >= allocation.supportCount() || !level.isInWorldBounds(below)
+                    || !QuarryPlan.canModify(level, below, level.getBlockState(below))
                     || !level.setBlock(below, allocation.support().defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
                 return;
             }
