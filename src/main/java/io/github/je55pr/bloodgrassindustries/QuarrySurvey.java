@@ -33,8 +33,7 @@ public final class QuarrySurvey {
             if (request.start() && !menu.surveying && player.isCreative() && menu.stillValid(player) && menu.quarry() != null) {
                 started = start(player, menu);
             } else if (!request.start() && menu.surveying) {
-                restore(player);
-                menu.surveying = false;
+                menu.surveying = !restore(player) && player.isSpectator();
             }
             PacketDistributor.sendToPlayer(player, new State(menu.containerId, started || menu.surveying));
         });
@@ -42,6 +41,9 @@ public final class QuarrySurvey {
     }
 
     private static boolean start(ServerPlayer player, QuarryMenu menu) {
+        if (player.getPersistentData().contains(RETURN) && !restore(player)) {
+            return false;
+        }
         CompoundTag tag = new CompoundTag();
         tag.putString("Dimension", player.level().dimension().location().toString());
         tag.putDouble("X", player.getX());
@@ -51,8 +53,9 @@ public final class QuarrySurvey {
         tag.putFloat("Pitch", player.getXRot());
         tag.putBoolean("Flying", player.getAbilities().flying);
         player.getPersistentData().put(RETURN, tag);
-        if (!player.setGameMode(GameType.SPECTATOR)) {
-            player.getPersistentData().remove(RETURN);
+        player.setGameMode(GameType.SPECTATOR);
+        if (!player.isSpectator()) {
+            restore(player);
             player.displayClientMessage(Component.literal("Spectator flight is unavailable."), true);
             return false;
         }
@@ -61,10 +64,20 @@ public final class QuarrySurvey {
         return true;
     }
 
-    static void restore(ServerPlayer player) {
+    static boolean restore(ServerPlayer player) {
         CompoundTag data = player.getPersistentData();
-        if (!data.contains(RETURN) || player.hasDisconnected()) {
-            return;
+        if (!data.contains(RETURN)) {
+            return true;
+        }
+        if (player.hasDisconnected()) {
+            return false;
+        }
+        if (!player.isCreative()) {
+            player.setGameMode(GameType.CREATIVE);
+            if (!player.isCreative()) {
+                player.displayClientMessage(Component.literal("Could not restore Creative mode. Your return point is saved."), true);
+                return false;
+            }
         }
         CompoundTag tag = data.getCompound(RETURN);
         ResourceLocation dimension = ResourceLocation.tryParse(tag.getString("Dimension"));
@@ -73,12 +86,10 @@ public final class QuarrySurvey {
             player.teleportTo(level, tag.getDouble("X"), tag.getDouble("Y"), tag.getDouble("Z"), Set.of(),
                     tag.getFloat("Yaw"), tag.getFloat("Pitch"));
         }
-        if (player.isSpectator()) {
-            player.setGameMode(GameType.CREATIVE);
-            player.getAbilities().flying = tag.getBoolean("Flying");
-            player.onUpdateAbilities();
-        }
+        player.getAbilities().flying = tag.getBoolean("Flying");
+        player.onUpdateAbilities();
         data.remove(RETURN);
+        return true;
     }
 
     @SubscribeEvent

@@ -193,6 +193,18 @@ final class QuarryPlan {
                 && preview.getBlockState(pos.above()).is(falling);
     }
 
+    static int skyBlocker(BlockGetter preview, BlockPos pos, int floor) {
+        BlockPos.MutableBlockPos probe = pos.mutable();
+        for (int y = preview.getMaxBuildHeight() - 1; y >= floor; y--) {
+            probe.setY(y);
+            BlockState state = preview.getBlockState(probe);
+            if (!state.isAir() && !state.propagatesSkylightDown(preview, probe)) {
+                return y;
+            }
+        }
+        return floor - 1;
+    }
+
     enum Surface { ROAD, WALL }
 
     enum Support { NONE, NEEDED, IMPOSSIBLE }

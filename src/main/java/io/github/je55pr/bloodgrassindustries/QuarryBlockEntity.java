@@ -126,6 +126,7 @@ final class QuarryBlockEntity extends BlockEntity {
         QuarryPlan plan = validatedPlan(server, player, draft);
         cancelSurvey(server);
         // Recheck the stock against the current terrain even when the menu has a saved survey.
+        surveyResult = null;
         excavation = QuarryExcavation.start(player.getUUID(), plan, selected);
         saveSettings(server, player, draft, selected);
         String message = excavation.checkingFinish() ? "Checking materials before excavation. Keep the quarry block loaded."
@@ -253,7 +254,7 @@ final class QuarryBlockEntity extends BlockEntity {
         surveyResult = null;
         invalidateMenus(level, player);
         String result = "Quarry excavated. Removed " + excavation.removed() + " blocks.";
-        return excavation.finishUnavailable() ? result + " The cut could no longer supply the selected finishes." : result;
+        return excavation.finishUnavailable() ? result + " Some selected finishes could not be placed." : result;
     }
 
     @Override
@@ -324,6 +325,9 @@ final class QuarryBlockEntity extends BlockEntity {
         QuarryPlan.Settings surveyed = QuarryPlan.Settings.load(cached);
         surveyResult = surveyed == null ? null : new SurveyResult(surveyed, QuarryMaterials.Report.load(cached));
         excavation = QuarryExcavation.load(tag.getCompound("Excavation"));
+        if (excavation != null) {
+            surveyResult = null;
+        }
         finish = QuarryMaterials.Finish.load(tag.getCompound("Finish"));
         hasLastOutput = tag.contains(LAST_OUTPUT_KEY);
         lastOutput = QuarryMaterials.loadOutput(tag.getCompound(LAST_OUTPUT_KEY));

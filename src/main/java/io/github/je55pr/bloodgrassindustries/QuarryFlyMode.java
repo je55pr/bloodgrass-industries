@@ -85,6 +85,8 @@ public final class QuarryFlyMode {
         if (active != null && active.editor.getMenu().containerId == message.containerId()) {
             if (!message.surveying()) {
                 active.finish(true);
+            } else {
+                active.returning = false;
             }
             return;
         }
@@ -174,6 +176,15 @@ public final class QuarryFlyMode {
         if (active == null) {
             return;
         }
+        int button = event.getButton();
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT && button != GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            var keys = active.game.options;
+            if (keys.keyUp.matchesMouse(button) || keys.keyDown.matchesMouse(button) || keys.keyLeft.matchesMouse(button)
+                    || keys.keyRight.matchesMouse(button) || keys.keyJump.matchesMouse(button) || keys.keyShift.matchesMouse(button)
+                    || keys.keySprint.matchesMouse(button)) {
+                return;
+            }
+        }
         event.setCanceled(true);
         if (event.getAction() == GLFW.GLFW_PRESS) {
             if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -250,7 +261,12 @@ public final class QuarryFlyMode {
 
     private String previewStatus(QuarryPlan plan, QuarryMaterials.Finish finish, QuarryMaterials.Allocation allocation) {
         if (plan != null && allocation == null && (finish.road() instanceof FallingBlock || finish.wall() instanceof FallingBlock)) {
-            return "Survey the current plan to preview falling-block supports.";
+            var report = editor.report();
+            if (report == null) {
+                String status = editor.materialStatus();
+                return status.isEmpty() ? "Survey the current plan to preview falling-block supports." : status;
+            }
+            return report.surfaces().cannotSupport(finish) ? QuarryMaterials.NO_SUPPORT_SPACE : QuarryMaterials.INSUFFICIENT_FINISHES;
         }
         return editor.status();
     }

@@ -30,6 +30,9 @@ final class QuarryMaterialsScreen extends Screen {
     private int offset;
     private boolean blockedFallingChoices;
     private Button survey;
+    private Button previousPage;
+    private Button nextPage;
+    private final List<Button> finishButtons = new ArrayList<>();
 
     QuarryMaterialsScreen(QuarryScreen quarry) {
         super(Component.literal("Quarry materials"));
@@ -53,12 +56,29 @@ final class QuarryMaterialsScreen extends Screen {
                 .bounds(left + 9, top + panelHeight - 26, 113, 18).build());
         addRenderableWidget(Button.builder(Component.literal("Back"), ignored -> onClose())
                 .bounds(left + panelWidth - 64, top + panelHeight - 26, 55, 18).build());
+        previousPage = pageButton("Previous page", left + panelWidth / 2 - 19, -1, "<");
+        nextPage = pageButton("Next page", left + panelWidth / 2 + 2, 1, ">");
+        finishButtons.clear();
+        for (int i = 0; i < visibleRows; i++) {
+            int index = i;
+            finishButtons.add(addRenderableWidget(Button.builder(Component.empty(), ignored -> {
+                quarry.setFinish(with(rows.get(offset + index).block()));
+                rebuild();
+            }).bounds(left + 9, listTop + i * ROW_HEIGHT, panelWidth - 18, ROW_HEIGHT).build()));
+        }
         rebuild();
+    }
+
+    private Button pageButton(String label, int x, int direction, String symbol) {
+        return addRenderableWidget(Button.builder(Component.literal(symbol), ignored -> scrollRows(direction * visibleRows))
+                .createNarration(ignored -> Component.literal(label))
+                .bounds(x, top + panelHeight - 26, 18, 18).build());
     }
 
     private void tab(String label, int index, int width, View next) {
         addRenderableWidget(Button.builder(Component.literal(label), ignored -> {
             view = next;
+            offset = 0;
             rebuild();
         }).bounds(left + 9 + index * (width + 2), top + 24, width, 18).build());
     }
@@ -76,13 +96,29 @@ final class QuarryMaterialsScreen extends Screen {
     private void rebuild() {
         previousReport = quarry.report();
         previousFinish = quarry.finish();
-        offset = 0;
         blockedFallingChoices = false;
         rows = switch (view) {
             case LAST_CUT -> outputRows(quarry.getMenu().lastOutput);
             case OUTPUT -> estimatedOutputRows();
             case ROAD, WALL -> finishRows(view == View.WALL);
         };
+        scrollRows(0);
+    }
+
+    private void scrollRows(int amount) {
+        offset = Math.clamp((long) offset + amount, 0, Math.max(0, rows.size() - visibleRows));
+        previousPage.visible = nextPage.visible = rows.size() > visibleRows;
+        previousPage.active = offset > 0;
+        nextPage.active = offset < rows.size() - visibleRows;
+        for (int i = 0; i < finishButtons.size(); i++) {
+            Button button = finishButtons.get(i);
+            int index = offset + i;
+            button.visible = index < rows.size() && rows.get(index).block() != null;
+            if (button.visible) {
+                Row row = rows.get(index);
+                button.setMessage(row.label().copy().append(row.count().isEmpty() ? "" : "  " + row.count()));
+            }
+        }
     }
 
     private List<Row> estimatedOutputRows() {
@@ -100,6 +136,7 @@ final class QuarryMaterialsScreen extends Screen {
             return choices;
         }
         Map<Block, Long> candidates = previousReport.materials().candidates();
+        previousReport.surfaces().includeSurfaceMaterials(wall, candidates);
         blockedFallingChoices = previousReport.surfaces().cannotSupport(wall)
                 && candidates.keySet().stream().anyMatch(FallingBlock.class::isInstance);
         candidates.entrySet().stream()
@@ -145,8 +182,8 @@ final class QuarryMaterialsScreen extends Screen {
         for (int i = 0; i < visibleRows && offset + i < rows.size(); i++) {
             Row row = rows.get(offset + i);
             int y = listTop + i * ROW_HEIGHT;
-            if (mouseX >= left + 9 && mouseX < left + panelWidth - 9 && mouseY >= y && mouseY < y + ROW_HEIGHT && row.block() != null) {
-                graphics.fill(left + 9, y, left + panelWidth - 9, y + ROW_HEIGHT, 0xff3e4249);
+            if (row.block() != null) {
+                continue;
             }
             graphics.drawString(font, row.label(), left + 15, y + 4, 0xffeeeeee);
             graphics.drawString(font, row.count(), left + panelWidth - 16 - font.width(row.count()), y + 4, 0xffeeeeee);
@@ -184,7 +221,7 @@ final class QuarryMaterialsScreen extends Screen {
         }
         QuarryMaterials.Allocation allocation = quarry.allocation();
         if (allocation == null) {
-            return Component.literal("The cut cannot supply the selected finishes together.");
+            return Component.literal(QuarryMaterials.INSUFFICIENT_FINISHES);
         }
         if (allocation.supportCount() != 0) {
             return Component.literal("Falling blocks need " + allocation.supportCount() + " support blocks of ")
@@ -194,22 +231,9 @@ final class QuarryMaterialsScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double x, double y, int button) {
-        if (button == 0 && x >= left + 9 && x < left + panelWidth - 9 && y >= listTop && y < listTop + visibleRows * ROW_HEIGHT) {
-            int index = offset + (int) (y - listTop) / ROW_HEIGHT;
-            if (index < rows.size() && rows.get(index).block() != null) {
-                quarry.setFinish(with(rows.get(index).block()));
-                rebuild();
-                return true;
-            }
-        }
-        return super.mouseClicked(x, y, button);
-    }
-
-    @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (rows.size() > visibleRows && vertical != 0) {
-            offset = Math.clamp((long) offset + (vertical > 0 ? -1 : 1), 0, Math.max(0, rows.size() - visibleRows));
+            scrollRows(vertical > 0 ? -1 : 1);
             return true;
         }
         return super.mouseScrolled(x, y, horizontal, vertical);

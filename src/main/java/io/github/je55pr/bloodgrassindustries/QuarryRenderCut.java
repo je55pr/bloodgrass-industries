@@ -1,5 +1,6 @@
 package io.github.je55pr.bloodgrassindustries;
 
+import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.client.Minecraft;
@@ -8,6 +9,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -67,9 +69,18 @@ public final class QuarryRenderCut {
             return plan.previewState(world, pos, state, pos.getX() - origin.getX(), pos.getZ() - origin.getZ(), finish, support);
         }
 
-        public boolean hasPreviewSkylight(BlockGetter preview, BlockPos pos) {
-            return skylight && pos.getY() >= floorAt(pos)
-                    && preview.getBlockState(pos).isAir() && preview.getBlockState(pos.above()).isAir();
+        public boolean hasPreviewSkylight(BlockGetter preview, BlockPos pos, Long2IntMap skyCeilings) {
+            int floor = floorAt(pos);
+            if (!skylight || pos.getY() < floor || !preview.getBlockState(pos).isAir()) {
+                return false;
+            }
+            long column = ChunkPos.asLong(pos.getX(), pos.getZ());
+            int ceiling = skyCeilings.getOrDefault(column, Integer.MAX_VALUE);
+            if (ceiling == Integer.MAX_VALUE) {
+                ceiling = QuarryPlan.skyBlocker(preview, pos, floor);
+                skyCeilings.put(column, ceiling);
+            }
+            return pos.getY() > ceiling;
         }
 
         private int floorAt(BlockPos pos) {

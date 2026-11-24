@@ -29,6 +29,7 @@ import net.minecraft.world.phys.Vec3;
 
 final class QuarryMaterials {
     static final String NO_SUPPORT_SPACE = "A falling finish has no room for support below a surface.";
+    static final String INSUFFICIENT_FINISHES = "The cut cannot supply the selected finishes together.";
     private static final String YIELD_COUNT_KEY = "Count";
     private static final List<ItemStack> TOOLS = List.of(Items.NETHERITE_PICKAXE.getDefaultInstance(),
             Items.NETHERITE_SHOVEL.getDefaultInstance(), Items.NETHERITE_AXE.getDefaultInstance(),
@@ -92,6 +93,14 @@ final class QuarryMaterials {
 
         long cost(boolean edge, Block material) {
             return edge ? wall - existingWall.getOrDefault(material, 0L) : road - existingRoad.getOrDefault(material, 0L);
+        }
+
+        void includeSurfaceMaterials(boolean edge, Map<Block, Long> candidates) {
+            for (Block block : (edge ? existingWall : existingRoad).keySet()) {
+                if (usable(block)) {
+                    candidates.putIfAbsent(block, 0L);
+                }
+            }
         }
 
         CompoundTag save() {

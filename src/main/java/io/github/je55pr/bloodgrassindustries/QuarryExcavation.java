@@ -170,8 +170,11 @@ final class QuarryExcavation {
             return true;
         }
         allocation = report().allocate(finish);
-        finishUnavailable = allocation == null;
-        return !finishUnavailable;
+        if (allocation == null) {
+            finishUnavailable = true;
+            return false;
+        }
+        return true;
     }
 
     private LevelChunk loadChunk(ServerLevel level, BlockPos origin, ChunkPos target) {
@@ -280,15 +283,18 @@ final class QuarryExcavation {
         boolean edge = surface == QuarryPlan.Surface.WALL;
         Block material = finish.material(surface);
         boolean swap = material != existing.getBlock();
-        if (material == Blocks.AIR || swap && (edge ? spentWall : spentRoad) >= surfaces.cost(edge, material)) {
+        if (material == Blocks.AIR) {
             return;
         }
-        if (material instanceof FallingBlock && !placeSupport(level, below, support)) {
+        if ((swap && (edge ? spentWall : spentRoad) >= surfaces.cost(edge, material))
+                || (material instanceof FallingBlock && !placeSupport(level, below, support))) {
+            finishUnavailable = true;
             return;
         }
-        BlockState replacement = material.defaultBlockState();
-        if (swap && level.setBlock(pos, replacement, Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
-            if (edge) {
+        if (swap) {
+            if (!level.setBlock(pos, material.defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
+                finishUnavailable = true;
+            } else if (edge) {
                 spentWall++;
             } else {
                 spentRoad++;
@@ -333,6 +339,7 @@ final class QuarryExcavation {
         tag.putLong("Removed", removed);
         tag.putString("Phase", phase.name());
         tag.put("Report", report().save());
+        tag.putBoolean("FinishUnavailable", finishUnavailable);
         tag.putLong("SpentRoad", spentRoad);
         tag.putLong("SpentWall", spentWall);
         tag.putLong("SpentSupports", spentSupports);
@@ -357,6 +364,7 @@ final class QuarryExcavation {
         QuarryMaterials.Report report = QuarryMaterials.Report.load(tag.getCompound("Report"));
         job.materials = report.materials();
         job.surfaces = report.surfaces();
+        job.finishUnavailable = tag.getBoolean("FinishUnavailable");
         job.spentRoad = tag.getLong("SpentRoad");
         job.spentWall = tag.getLong("SpentWall");
         job.spentSupports = tag.getLong("SpentSupports");

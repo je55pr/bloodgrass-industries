@@ -1,6 +1,7 @@
 package io.github.je55pr.bloodgrassindustries.mixin;
 
 import io.github.je55pr.bloodgrassindustries.QuarryRenderCut;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import net.minecraft.client.renderer.chunk.RenderChunkRegion;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -21,11 +22,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 abstract class QuarryChunkMixin implements BlockAndTintGetter {
     @Shadow @Final protected Level level;
     @Unique private QuarryRenderCut.Snapshot bloodgrass$cut;
+    @Unique private Long2IntOpenHashMap bloodgrass$skyCeilings;
 
     @Inject(method = "<init>(Lnet/minecraft/world/level/Level;II[Lnet/minecraft/client/renderer/chunk/RenderChunk;Lit/unimi/dsi/fastutil/longs/Long2ObjectFunction;)V",
             at = @At("RETURN"))
     private void bloodgrass$captureCut(CallbackInfo info) {
         bloodgrass$cut = QuarryRenderCut.snapshot(level);
+        if (bloodgrass$cut != null) {
+            bloodgrass$skyCeilings = new Long2IntOpenHashMap();
+        }
     }
 
     @Inject(method = "getBlockState", at = @At("RETURN"), cancellable = true)
@@ -48,7 +53,7 @@ abstract class QuarryChunkMixin implements BlockAndTintGetter {
 
     @Override
     public int getBrightness(LightLayer layer, BlockPos pos) {
-        if (layer == LightLayer.SKY && bloodgrass$cut != null && bloodgrass$cut.hasPreviewSkylight(this, pos)) {
+        if (layer == LightLayer.SKY && bloodgrass$cut != null && bloodgrass$cut.hasPreviewSkylight(this, pos, bloodgrass$skyCeilings)) {
             return getMaxLightLevel();
         }
         return BlockAndTintGetter.super.getBrightness(layer, pos);
