@@ -14,7 +14,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-@EventBusSubscriber(modid = BloodgrassIndustries.ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = BloodgrassIndustries.ID, value = Dist.CLIENT)
 public final class QuarryScreen extends AbstractContainerScreen<QuarryMenu> {
     static final String[] LABELS = {"Base Y", "Width", "Drop", "Steps"};
     private final String[] values;
@@ -156,8 +156,9 @@ public final class QuarryScreen extends AbstractContainerScreen<QuarryMenu> {
 
     void surveyMaterials() {
         if (plan() != null && minecraft.player.isCreative()) {
+            menu.forgetReport(settings);
             menu.materialStatusSettings = settings;
-            menu.materialStatus = "Surveying the cut.";
+            menu.materialStatus = QuarryBlockEntity.SURVEYING;
             PacketDistributor.sendToServer(new QuarryPayload(menu.containerId, QuarryPayload.Action.SURVEY, settings, finish));
         }
     }

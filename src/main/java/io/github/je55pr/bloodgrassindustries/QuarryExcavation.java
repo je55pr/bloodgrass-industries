@@ -25,6 +25,8 @@ final class QuarryExcavation {
     private static final int SURVEY_BLOCKS_PER_TICK = 4_096;
     private static final long BATCH_TIME_NANOS = TimeUnit.MILLISECONDS.toNanos(10);
     private static final int UNSTARTED = Integer.MAX_VALUE;
+    private static final String OWNER_KEY = "Owner";
+    private static final String NEXT_Y_KEY = "NextY";
     private static final TicketType<BlockPos> TICKET = TicketType.create("bloodgrass_quarry", Comparator.<BlockPos>naturalOrder(), 80);
 
     private final UUID owner;
@@ -125,15 +127,10 @@ final class QuarryExcavation {
         int width = SectionPos.blockToSectionCoord(origin.getX() + bounds.maxX()) - firstX + 1;
         int depth = SectionPos.blockToSectionCoord(origin.getZ() + bounds.maxZ()) - firstZ + 1;
         int totalChunks = width * depth;
-        boolean surveying = phase == Phase.SURVEY || checkingFinish();
-        int budget = surveying ? SURVEY_BLOCKS_PER_TICK : BLOCKS_PER_TICK;
-        if (phase == Phase.FINISH && allocation == null) {
-            allocation = report().allocate(finish);
-            if (allocation == null) {
-                finishUnavailable = true;
-                return true;
-            }
+        if (!prepareFinish(finish)) {
+            return true;
         }
+        int budget = scanningOnly() ? SURVEY_BLOCKS_PER_TICK : BLOCKS_PER_TICK;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         ChunkPos renewed = null;
         LevelChunk chunk = null;
@@ -148,75 +145,109 @@ final class QuarryExcavation {
                 budget--;
                 continue;
             }
-            if (!target.equals(loaded)) {
-                release(level, origin);
-                loaded = target;
-            }
             if (!target.equals(renewed)) {
                 renewed = target;
-                level.getChunkSource().addRegionTicket(TICKET, loaded, 1, origin);
-                chunk = level.getChunkSource().getChunkNow(loaded.x, loaded.z);
+                chunk = loadChunk(level, origin, target);
                 if (chunk == null) {
                     return false;
                 }
             }
-            if (phase == Phase.MEASURE || phase == Phase.FINISH) {
-                if (!level.mayInteract(player, pos.set(x, floor, z)) || !level.getWorldBorder().isWithinBounds(pos)) {
-                    throw new IllegalArgumentException("Excavation stopped at a protected column.");
-                }
-                budget -= surfaceColumn(level, origin, pos, x, z, floor, finish);
-                advanceColumn(level, origin);
-                continue;
+            pos.set(x, floor, z);
+            if (!level.mayInteract(player, pos) || !level.getWorldBorder().isWithinBounds(pos)) {
+                throw new IllegalArgumentException("Excavation stopped at a protected column.");
             }
-            if (nextY == UNSTARTED) {
-                if (!level.mayInteract(player, pos.set(x, floor, z)) || !level.getWorldBorder().isWithinBounds(pos)) {
-                    throw new IllegalArgumentException("Excavation stopped at a protected column.");
-                }
-                nextY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15);
-                budget--;
-            }
-            while (nextY > floor && budget > 0 && (budget % 32 != 0 || System.nanoTime() - deadline < 0)) {
-                pos.set(x, nextY--, z);
-                budget--;
-                BlockState state = chunk.getBlockState(pos);
-                if (QuarryPlan.canExcavate(level, pos, state)) {
-                    Map<Item, Long> drops = QuarryMaterials.drops(level, pos, state);
-                    if (surveying || level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
-                        materials.record(state, drops);
-                        removed++;
-                    }
-                }
-            }
-            if (nextY <= floor) {
-                if (surveying) {
-                    budget -= surfaceColumn(level, origin, pos, x, z, floor, finish);
-                }
-                advanceColumn(level, origin);
-            }
+            budget = processColumn(level, origin, chunk, pos, finish, budget, deadline);
         }
-        if (chunkIndex < totalChunks) {
-            return false;
-        }
-        if (checkingFinish()) {
-            if (report().allocate(finish) == null) {
-                finishUnavailable = true;
-                return true;
-            }
-            materials = new QuarryMaterials();
-            surfaces = new QuarryMaterials.Counts();
-            removed = 0;
-            phase = Phase.CUT;
-        } else if (phase == Phase.CUT && !finish.isNatural()) {
-            phase = Phase.MEASURE;
-        } else if (phase == Phase.MEASURE) {
-            allocation = report().allocate(finish);
-            if (allocation == null) {
-                finishUnavailable = true;
-                return true;
-            }
-            phase = Phase.FINISH;
-        } else {
+        return chunkIndex >= totalChunks && completePhase(finish);
+    }
+
+    private boolean scanningOnly() {
+        return phase == Phase.SURVEY || checkingFinish();
+    }
+
+    private boolean prepareFinish(QuarryMaterials.Finish finish) {
+        if (phase != Phase.FINISH || allocation != null) {
             return true;
+        }
+        allocation = report().allocate(finish);
+        finishUnavailable = allocation == null;
+        return !finishUnavailable;
+    }
+
+    private LevelChunk loadChunk(ServerLevel level, BlockPos origin, ChunkPos target) {
+        if (!target.equals(loaded)) {
+            release(level, origin);
+            loaded = target;
+        }
+        level.getChunkSource().addRegionTicket(TICKET, loaded, 1, origin);
+        return level.getChunkSource().getChunkNow(loaded.x, loaded.z);
+    }
+
+    private int processColumn(ServerLevel level, BlockPos origin, LevelChunk chunk, BlockPos.MutableBlockPos pos,
+                              QuarryMaterials.Finish finish, int budget, long deadline) {
+        int x = pos.getX();
+        int z = pos.getZ();
+        int floor = pos.getY();
+        if (phase == Phase.MEASURE || phase == Phase.FINISH) {
+            budget -= surfaceColumn(level, origin, pos, x, z, floor, finish);
+            advanceColumn(level, origin);
+            return budget;
+        }
+        if (nextY == UNSTARTED) {
+            nextY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15);
+            budget--;
+        }
+        boolean surveying = scanningOnly();
+        while (nextY > floor && budget > 0 && (budget % 32 != 0 || System.nanoTime() - deadline < 0)) {
+            pos.set(x, nextY--, z);
+            budget--;
+            BlockState state = chunk.getBlockState(pos);
+            if (QuarryPlan.canExcavate(level, pos, state)) {
+                Map<Item, Long> drops = QuarryMaterials.drops(level, pos, state);
+                if (surveying || level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
+                    materials.recordDrops(state, drops);
+                    removed++;
+                }
+            }
+        }
+        if (nextY <= floor) {
+            if (surveying) {
+                budget -= surfaceColumn(level, origin, pos, x, z, floor, finish);
+            }
+            advanceColumn(level, origin);
+        }
+        return budget;
+    }
+
+    private boolean completePhase(QuarryMaterials.Finish finish) {
+        switch (phase) {
+            case SURVEY, FINISH -> {
+                return true;
+            }
+            case CHECK -> {
+                if (report().allocate(finish) == null) {
+                    finishUnavailable = true;
+                    return true;
+                }
+                materials = new QuarryMaterials();
+                surfaces = new QuarryMaterials.Counts();
+                removed = 0;
+                phase = Phase.CUT;
+            }
+            case CUT -> {
+                if (finish.isNatural()) {
+                    return true;
+                }
+                phase = Phase.MEASURE;
+            }
+            case MEASURE -> {
+                allocation = report().allocate(finish);
+                if (allocation == null) {
+                    finishUnavailable = true;
+                    return true;
+                }
+                phase = Phase.FINISH;
+            }
         }
         chunkIndex = 0;
         return false;
@@ -234,17 +265,17 @@ final class QuarryExcavation {
             }
             QuarryPlan.Surface surface = QuarryPlan.surfaceAt(y, floor, wallBottom);
             BlockPos below = pos.below();
-            boolean unsupported = FallingBlock.isFree(level.getBlockState(below));
+            QuarryPlan.Support support = QuarryPlan.supportAt(level, below, level.getBlockState(below));
             if (phase != Phase.FINISH) {
-                surfaces.add(surface == QuarryPlan.Surface.WALL, unsupported, existing.getBlock());
+                surfaces.add(surface == QuarryPlan.Surface.WALL, support, existing.getBlock());
             } else {
-                applyFinish(level, pos, below, surface, unsupported, finish, existing);
+                applyFinish(level, pos, below, surface, support, finish, existing);
             }
         }
         return floor - start + 1;
     }
 
-    private void applyFinish(ServerLevel level, BlockPos pos, BlockPos below, QuarryPlan.Surface surface, boolean unsupported,
+    private void applyFinish(ServerLevel level, BlockPos pos, BlockPos below, QuarryPlan.Surface surface, QuarryPlan.Support support,
                              QuarryMaterials.Finish finish, BlockState existing) {
         boolean edge = surface == QuarryPlan.Surface.WALL;
         Block material = finish.material(surface);
@@ -252,13 +283,8 @@ final class QuarryExcavation {
         if (material == Blocks.AIR || swap && (edge ? spentWall : spentRoad) >= surfaces.cost(edge, material)) {
             return;
         }
-        if (material instanceof FallingBlock && unsupported) {
-            if (spentSupports >= allocation.supportCount() || !level.isInWorldBounds(below)
-                    || !QuarryPlan.canModify(level, below, level.getBlockState(below))
-                    || !level.setBlock(below, allocation.support().defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
-                return;
-            }
-            spentSupports++;
+        if (material instanceof FallingBlock && !placeSupport(level, below, support)) {
+            return;
         }
         BlockState replacement = material.defaultBlockState();
         if (swap && level.setBlock(pos, replacement, Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
@@ -268,6 +294,18 @@ final class QuarryExcavation {
                 spentRoad++;
             }
         }
+    }
+
+    private boolean placeSupport(ServerLevel level, BlockPos below, QuarryPlan.Support support) {
+        if (support == QuarryPlan.Support.NONE) {
+            return true;
+        }
+        if (support == QuarryPlan.Support.IMPOSSIBLE || spentSupports >= allocation.supportCount()
+                || !level.setBlock(below, allocation.support().defaultBlockState(), Block.UPDATE_ALL | Block.UPDATE_SUPPRESS_DROPS)) {
+            return false;
+        }
+        spentSupports++;
+        return true;
     }
 
     private void advanceColumn(ServerLevel level, BlockPos origin) {
@@ -288,10 +326,10 @@ final class QuarryExcavation {
 
     CompoundTag save() {
         CompoundTag tag = new CompoundTag();
-        tag.putUUID("Owner", owner);
+        tag.putUUID(OWNER_KEY, owner);
         tag.putInt("Chunk", chunkIndex);
         tag.putInt("Column", column);
-        tag.putInt("NextY", nextY);
+        tag.putInt(NEXT_Y_KEY, nextY);
         tag.putLong("Removed", removed);
         tag.putString("Phase", phase.name());
         tag.put("Report", report().save());
@@ -302,13 +340,13 @@ final class QuarryExcavation {
     }
 
     static QuarryExcavation load(CompoundTag tag) {
-        if (!tag.hasUUID("Owner")) {
+        if (!tag.hasUUID(OWNER_KEY)) {
             return null;
         }
-        QuarryExcavation job = new QuarryExcavation(tag.getUUID("Owner"), null, Phase.CUT);
+        QuarryExcavation job = new QuarryExcavation(tag.getUUID(OWNER_KEY), null, Phase.CUT);
         job.chunkIndex = Math.max(0, tag.getInt("Chunk"));
         job.column = Math.clamp(tag.getInt("Column"), 0, 255);
-        job.nextY = tag.contains("NextY") ? tag.getInt("NextY") : UNSTARTED;
+        job.nextY = tag.contains(NEXT_Y_KEY) ? tag.getInt(NEXT_Y_KEY) : UNSTARTED;
         job.removed = tag.getLong("Removed");
         job.phase = switch (tag.getString("Phase")) {
             case "CHECK" -> Phase.CHECK;

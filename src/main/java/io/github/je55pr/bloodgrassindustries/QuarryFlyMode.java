@@ -17,7 +17,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -53,6 +55,8 @@ public final class QuarryFlyMode {
     private boolean previewDirty = true;
     private int previewCooldown;
     private QuarryPlan renderedPlan;
+    private QuarryMaterials.Report seenReport;
+    private Block renderedSupport = Blocks.AIR;
     private BlockPos target;
     private int field;
     private String geometryStatus = "";
@@ -103,7 +107,7 @@ public final class QuarryFlyMode {
 
     private void finish(boolean returnToEditor) {
         active = null;
-        QuarryRenderCut.show(game, level, origin, null, QuarryMaterials.Finish.NATURAL);
+        QuarryRenderCut.show(game, level, origin, null, QuarryMaterials.Finish.NATURAL, Blocks.AIR);
         game.options.setCameraType(previousCameraType);
         if (returnToEditor && game.player != null && game.player.containerMenu == editor.getMenu()) {
             game.setScreen(editor);
@@ -219,6 +223,10 @@ public final class QuarryFlyMode {
     }
 
     private void updatePreview() {
+        if (seenReport != editor.getMenu().materialReport) {
+            seenReport = editor.getMenu().materialReport;
+            previewDirty = true;
+        }
         if (previewCooldown > 0) {
             previewCooldown--;
         }
@@ -228,12 +236,23 @@ public final class QuarryFlyMode {
         previewDirty = false;
         previewCooldown = PREVIEW_REFRESH_TICKS;
         QuarryPlan plan = editor.plan();
-        geometryStatus = editor.status();
         QuarryPlan next = showCut ? plan : null;
-        if (next != renderedPlan) {
+        QuarryMaterials.Finish finish = editor.finish();
+        QuarryMaterials.Allocation allocation = next == null ? null : editor.allocation();
+        Block support = allocation == null ? Blocks.AIR : allocation.support();
+        geometryStatus = previewStatus(next, finish, allocation);
+        if (next != renderedPlan || support != renderedSupport) {
             renderedPlan = next;
-            QuarryRenderCut.show(game, level, origin, next, editor.finish());
+            renderedSupport = support;
+            QuarryRenderCut.show(game, level, origin, next, finish, support);
         }
+    }
+
+    private String previewStatus(QuarryPlan plan, QuarryMaterials.Finish finish, QuarryMaterials.Allocation allocation) {
+        if (plan != null && allocation == null && (finish.road() instanceof FallingBlock || finish.wall() instanceof FallingBlock)) {
+            return "Survey the current plan to preview falling-block supports.";
+        }
+        return editor.status();
     }
 
     private BlockPos pointedBlock() {
@@ -340,7 +359,7 @@ public final class QuarryFlyMode {
         @Override
         public BlockState getBlockState(BlockPos pos) {
             BlockState state = level.isLoaded(pos) ? level.getBlockState(pos) : Blocks.AIR.defaultBlockState();
-            return cut == null ? state : cut.visible(level, pos, state);
+            return cut == null ? state : cut.visible(this, pos, state);
         }
 
         @Override

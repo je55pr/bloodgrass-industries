@@ -1,6 +1,7 @@
 package io.github.je55pr.bloodgrassindustries;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleMenuProvider;
@@ -26,10 +27,10 @@ final class QuarryBlock extends Block implements EntityBlock {
 
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        if (level.isClientSide || type != BloodgrassIndustries.QUARRY_ENTITY.get()) {
+        if (!(level instanceof ServerLevel server) || type != BloodgrassIndustries.QUARRY_ENTITY.get()) {
             return null;
         }
-        return (world, pos, current, entity) -> QuarryBlockEntity.tick(world, pos, current, (QuarryBlockEntity) entity);
+        return (world, pos, current, entity) -> ((QuarryBlockEntity) entity).tick(server);
     }
 
     @Override

@@ -62,7 +62,12 @@ record QuarryPayload(int containerId, Action action, QuarryPlan.Settings setting
     private static QuarryPayload read(FriendlyByteBuf buffer) {
         int id = buffer.readVarInt();
         Action action = buffer.readEnum(Action.class);
-        return new QuarryPayload(id, action, readSettings(buffer), QuarryMaterials.Finish.load(buffer.readNbt()));
+        QuarryPlan.Settings settings = readSettings(buffer);
+        var finish = buffer.readNbt();
+        if (finish == null) {
+            throw new DecoderException("Missing quarry finish data");
+        }
+        return new QuarryPayload(id, action, settings, QuarryMaterials.Finish.load(finish));
     }
 
     private void write(FriendlyByteBuf buffer) {

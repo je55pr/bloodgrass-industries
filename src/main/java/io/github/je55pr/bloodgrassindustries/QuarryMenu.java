@@ -1,6 +1,7 @@
 package io.github.je55pr.bloodgrassindustries;
 
 import java.util.Map;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
@@ -23,6 +24,7 @@ final class QuarryMenu extends AbstractContainerMenu {
     QuarryPlan.Settings materialStatusSettings;
     String materialStatus = "";
     private final ServerLevel level;
+    private final UUID revision;
     boolean surveying;
 
     QuarryMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buffer) {
@@ -33,11 +35,13 @@ final class QuarryMenu extends AbstractContainerMenu {
         hasLastOutput = buffer.readBoolean();
         lastOutput = QuarryMaterials.loadOutput(buffer.readNbt());
         level = null;
+        revision = null;
     }
 
     QuarryMenu(int id, QuarryBlockEntity quarry) {
         super(BloodgrassIndustries.QUARRY_MENU.get(), id);
         level = (ServerLevel) quarry.getLevel();
+        revision = quarry.menuRevision();
         position = quarry.getBlockPos();
         settings = quarry.settings();
         finish = quarry.finish();
@@ -47,13 +51,33 @@ final class QuarryMenu extends AbstractContainerMenu {
 
     @Override
     public boolean stillValid(Player player) {
-        return level == null || (player.level() == level && (surveying && player.isSpectator()
-                || stillValid(ContainerLevelAccess.create(level, position), player, BloodgrassIndustries.QUARRY.get())));
+        if (level == null) {
+            return true;
+        }
+        if (player.level() != level) {
+            return false;
+        }
+        if (surveying && player.isSpectator()) {
+            // The quarry can go out of chunk range during a large preview.
+            return !level.isLoaded(position) || quarry() != null;
+        }
+        return quarry() != null && stillValid(ContainerLevelAccess.create(level, position), player, BloodgrassIndustries.QUARRY.get());
+    }
+
+    boolean isAt(ServerLevel server, BlockPos pos) {
+        return level == server && position.equals(pos);
     }
 
     QuarryBlockEntity quarry() {
         return level != null && level.isLoaded(position) && level.getBlockEntity(position) instanceof QuarryBlockEntity quarry
-                ? quarry : null;
+                && revision.equals(quarry.menuRevision()) ? quarry : null;
+    }
+
+    void forgetReport(QuarryPlan.Settings surveyed) {
+        if (surveyed.equals(materialSettings)) {
+            materialSettings = null;
+            materialReport = null;
+        }
     }
 
     @Override

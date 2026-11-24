@@ -48,7 +48,7 @@ abstract class QuarryChunkMixin implements BlockAndTintGetter {
 
     @Override
     public int getBrightness(LightLayer layer, BlockPos pos) {
-        if (layer == LightLayer.SKY && bloodgrass$cut != null && bloodgrass$cut.hasPreviewSkylight(pos)) {
+        if (layer == LightLayer.SKY && bloodgrass$cut != null && bloodgrass$cut.hasPreviewSkylight(this, pos)) {
             return getMaxLightLevel();
         }
         return BlockAndTintGetter.super.getBrightness(layer, pos);

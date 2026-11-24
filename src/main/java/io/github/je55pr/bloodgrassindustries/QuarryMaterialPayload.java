@@ -37,6 +37,8 @@ record QuarryMaterialPayload(int containerId, QuarryPlan.Settings settings, Stri
                 if (payload.report() != null) {
                     menu.materialSettings = payload.settings();
                     menu.materialReport = QuarryMaterials.Report.load(payload.report());
+                } else {
+                    menu.forgetReport(payload.settings());
                 }
             }
         }

@@ -28,8 +28,11 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.phys.Vec3;
 
 final class QuarryMaterials {
+    static final String NO_SUPPORT_SPACE = "A falling finish has no room for support below a surface.";
+    private static final String YIELD_COUNT_KEY = "Count";
     private static final List<ItemStack> TOOLS = List.of(Items.NETHERITE_PICKAXE.getDefaultInstance(),
-            Items.NETHERITE_SHOVEL.getDefaultInstance(), Items.NETHERITE_AXE.getDefaultInstance(), Items.NETHERITE_HOE.getDefaultInstance());
+            Items.NETHERITE_SHOVEL.getDefaultInstance(), Items.NETHERITE_AXE.getDefaultInstance(),
+            Items.NETHERITE_HOE.getDefaultInstance(), Items.NETHERITE_SWORD.getDefaultInstance());
 
     record Finish(Block road, Block wall) {
         static final Finish NATURAL = new Finish(Blocks.AIR, Blocks.AIR);
@@ -59,19 +62,32 @@ final class QuarryMaterials {
         private long wall;
         private long roadSupports;
         private long wallSupports;
+        private boolean roadSupportImpossible;
+        private boolean wallSupportImpossible;
         private final Map<Block, Long> existingRoad = new HashMap<>();
         private final Map<Block, Long> existingWall = new HashMap<>();
 
-        void add(boolean edge, boolean support, Block existing) {
+        void add(boolean edge, QuarryPlan.Support support, Block existing) {
             if (edge) {
                 wall++;
-                wallSupports += support ? 1 : 0;
+                wallSupports += support == QuarryPlan.Support.NEEDED ? 1 : 0;
+                wallSupportImpossible |= support == QuarryPlan.Support.IMPOSSIBLE;
                 existingWall.merge(existing, 1L, Long::sum);
             } else {
                 road++;
-                roadSupports += support ? 1 : 0;
+                roadSupports += support == QuarryPlan.Support.NEEDED ? 1 : 0;
+                roadSupportImpossible |= support == QuarryPlan.Support.IMPOSSIBLE;
                 existingRoad.merge(existing, 1L, Long::sum);
             }
+        }
+
+        boolean cannotSupport(boolean edge) {
+            return edge ? wallSupportImpossible : roadSupportImpossible;
+        }
+
+        boolean cannotSupport(Finish finish) {
+            return (finish.road() instanceof FallingBlock && roadSupportImpossible)
+                    || (finish.wall() instanceof FallingBlock && wallSupportImpossible);
         }
 
         long cost(boolean edge, Block material) {
@@ -84,6 +100,8 @@ final class QuarryMaterials {
             tag.putLong("Wall", wall);
             tag.putLong("RoadSupports", roadSupports);
             tag.putLong("WallSupports", wallSupports);
+            tag.putBoolean("RoadSupportImpossible", roadSupportImpossible);
+            tag.putBoolean("WallSupportImpossible", wallSupportImpossible);
             tag.put("ExistingRoad", saveBlocks(existingRoad));
             tag.put("ExistingWall", saveBlocks(existingWall));
             return tag;
@@ -95,6 +113,8 @@ final class QuarryMaterials {
             counts.wall = tag.getLong("Wall");
             counts.roadSupports = tag.getLong("RoadSupports");
             counts.wallSupports = tag.getLong("WallSupports");
+            counts.roadSupportImpossible = tag.getBoolean("RoadSupportImpossible");
+            counts.wallSupportImpossible = tag.getBoolean("WallSupportImpossible");
             loadBlocks(tag.getCompound("ExistingRoad"), counts.existingRoad);
             loadBlocks(tag.getCompound("ExistingWall"), counts.existingWall);
             return counts;
@@ -164,7 +184,7 @@ final class QuarryMaterials {
         return items;
     }
 
-    void record(BlockState state, Map<Item, Long> drops) {
+    void recordDrops(BlockState state, Map<Item, Long> drops) {
         Block block = state.getBlock();
         if (usable(block)) {
             batches.merge(new Yield(block, Map.copyOf(drops)), 1L, Long::sum);
@@ -192,7 +212,8 @@ final class QuarryMaterials {
     }
 
     Allocation allocate(Finish finish, Counts surfaces) {
-        if ((finish.road() != Blocks.AIR && !usable(finish.road())) || (finish.wall() != Blocks.AIR && !usable(finish.wall()))) {
+        if (surfaces.cannotSupport(finish) || (finish.road() != Blocks.AIR && !usable(finish.road()))
+                || (finish.wall() != Blocks.AIR && !usable(finish.wall()))) {
             return null;
         }
         Map<Item, Long> demand = new LinkedHashMap<>();
@@ -301,7 +322,7 @@ final class QuarryMaterials {
         batches.forEach((yield, count) -> {
             CompoundTag row = new CompoundTag();
             row.putString("Source", blockId(yield.source()));
-            row.putLong("Count", count);
+            row.putLong(YIELD_COUNT_KEY, count);
             row.put("Items", saveOutput(yield.items()));
             yields.add(row);
         });
@@ -315,8 +336,8 @@ final class QuarryMaterials {
         for (Tag entry : tag.getList("Yields", Tag.TAG_COMPOUND)) {
             CompoundTag row = (CompoundTag) entry;
             Block source = readBlock(row.getString("Source"));
-            if (source != Blocks.AIR && row.getLong("Count") > 0) {
-                materials.batches.put(new Yield(source, Map.copyOf(loadOutput(row.getCompound("Items")))), row.getLong("Count"));
+            if (source != Blocks.AIR && row.getLong(YIELD_COUNT_KEY) > 0) {
+                materials.batches.put(new Yield(source, Map.copyOf(loadOutput(row.getCompound("Items")))), row.getLong(YIELD_COUNT_KEY));
             }
         }
         return materials;

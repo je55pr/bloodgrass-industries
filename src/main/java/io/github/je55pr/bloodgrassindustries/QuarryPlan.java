@@ -8,6 +8,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -160,7 +161,7 @@ final class QuarryPlan {
                 Math.min(floorAt(x, z - 1), floorAt(x, z + 1))));
     }
 
-    BlockState previewState(BlockGetter world, BlockPos pos, BlockState state, int x, int z, QuarryMaterials.Finish finish) {
+    BlockState previewState(BlockGetter world, BlockPos pos, BlockState state, int x, int z, QuarryMaterials.Finish finish, Block support) {
         int floor = floorAt(x, z);
         int y = pos.getY();
         if (y > floor) {
@@ -171,15 +172,38 @@ final class QuarryPlan {
         }
         int bottom = wallBottom(x, z, floor);
         Surface surface = surfaceAt(y, floor, bottom);
-        if (surface == null) {
-            return state;
+        if (surface != null) {
+            Block material = finish.material(surface);
+            if (material != Blocks.AIR && canFinish(world, pos, state)) {
+                return state.is(material) ? state : material.defaultBlockState();
+            }
         }
-        Block material = finish.material(surface);
-        return material != Blocks.AIR && !state.is(material) && canFinish(world, pos, state)
-                ? material.defaultBlockState() : state;
+        if (support != Blocks.AIR && supportAt(world, pos, state) == Support.NEEDED
+                && hasFallingFinishAbove(world, pos, floor, bottom, finish)) {
+            return support.defaultBlockState();
+        }
+        return state;
+    }
+
+    private static boolean hasFallingFinishAbove(BlockGetter preview, BlockPos pos, int floor, int bottom,
+                                                 QuarryMaterials.Finish finish) {
+        Surface above = surfaceAt(pos.getY() + 1, floor, bottom);
+        // The virtual reader only checks a higher cell. A previously finished cell can already provide support.
+        return above != null && finish.material(above) instanceof FallingBlock falling
+                && preview.getBlockState(pos.above()).is(falling);
     }
 
     enum Surface { ROAD, WALL }
+
+    enum Support { NONE, NEEDED, IMPOSSIBLE }
+
+    static Support supportAt(BlockGetter world, BlockPos below, BlockState state) {
+        if (!FallingBlock.isFree(state)) {
+            return Support.NONE;
+        }
+        return below.getY() >= world.getMinBuildHeight() && canModify(world, below, state)
+                ? Support.NEEDED : Support.IMPOSSIBLE;
+    }
 
     static Surface surfaceAt(int y, int floor, int wallBottom) {
         if (y > floor) {

@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 
 final class QuarryMaterialsScreen extends Screen {
     private enum View { OUTPUT, ROAD, WALL, LAST_CUT }
@@ -27,6 +28,7 @@ final class QuarryMaterialsScreen extends Screen {
     private int listTop;
     private int visibleRows;
     private int offset;
+    private boolean blockedFallingChoices;
     private Button survey;
 
     QuarryMaterialsScreen(QuarryScreen quarry) {
@@ -75,26 +77,37 @@ final class QuarryMaterialsScreen extends Screen {
         previousReport = quarry.report();
         previousFinish = quarry.finish();
         offset = 0;
-        if (view == View.LAST_CUT) {
-            rows = outputRows(quarry.getMenu().lastOutput);
-        } else if (view == View.OUTPUT) {
-            QuarryMaterials.Allocation allocation = quarry.allocation();
-            rows = previousReport == null ? List.of()
-                    : outputRows(allocation == null ? previousReport.materials().output() : allocation.output());
-        } else {
-            List<Row> choices = new ArrayList<>();
-            choices.add(new Row(Component.literal("Natural"), "", Blocks.AIR));
-            if (previousReport != null) {
-                boolean edge = view == View.WALL;
-                previousReport.materials().candidates().entrySet().stream()
-                        .filter(entry -> previousReport.surfaces().cost(edge, Blocks.AIR) > 0
-                                && entry.getValue() >= previousReport.surfaces().cost(edge, entry.getKey())
-                                && previousReport.allocate(with(entry.getKey())) != null)
-                        .sorted(Map.Entry.<Block, Long>comparingByValue().reversed().thenComparing(entry -> QuarryMaterials.blockId(entry.getKey())))
-                        .forEach(entry -> choices.add(new Row(entry.getKey().getName(), Long.toString(entry.getValue()), entry.getKey())));
-            }
-            rows = choices;
+        blockedFallingChoices = false;
+        rows = switch (view) {
+            case LAST_CUT -> outputRows(quarry.getMenu().lastOutput);
+            case OUTPUT -> estimatedOutputRows();
+            case ROAD, WALL -> finishRows(view == View.WALL);
+        };
+    }
+
+    private List<Row> estimatedOutputRows() {
+        if (previousReport == null) {
+            return List.of();
         }
+        QuarryMaterials.Allocation allocation = quarry.allocation();
+        return outputRows(allocation == null ? previousReport.materials().output() : allocation.output());
+    }
+
+    private List<Row> finishRows(boolean wall) {
+        List<Row> choices = new ArrayList<>();
+        choices.add(new Row(Component.literal("Natural"), "", Blocks.AIR));
+        if (previousReport == null || previousReport.surfaces().cost(wall, Blocks.AIR) == 0) {
+            return choices;
+        }
+        Map<Block, Long> candidates = previousReport.materials().candidates();
+        blockedFallingChoices = previousReport.surfaces().cannotSupport(wall)
+                && candidates.keySet().stream().anyMatch(FallingBlock.class::isInstance);
+        candidates.entrySet().stream()
+                .filter(entry -> entry.getValue() >= previousReport.surfaces().cost(wall, entry.getKey())
+                        && previousReport.allocate(with(entry.getKey())) != null)
+                .sorted(Map.Entry.<Block, Long>comparingByValue().reversed().thenComparing(entry -> QuarryMaterials.blockId(entry.getKey())))
+                .forEach(entry -> choices.add(new Row(entry.getKey().getName(), Long.toString(entry.getValue()), entry.getKey())));
+        return choices;
     }
 
     private static List<Row> outputRows(Map<Item, Long> items) {
@@ -144,7 +157,8 @@ final class QuarryMaterialsScreen extends Screen {
 
     private String heading() {
         return switch (view) {
-            case OUTPUT -> "Expected mining output after finishes";
+            case OUTPUT -> previousReport != null && quarry.allocation() == null
+                    ? "Mining output before finishes" : "Expected mining output after finishes";
             case LAST_CUT -> "Last excavation output";
             case ROAD -> previousReport == null ? "Road finish" : "Road finish · " + previousReport.surfaces().cost(false, Blocks.AIR) + " surface blocks";
             case WALL -> previousReport == null ? "Wall finish" : "Walls and edges · " + previousReport.surfaces().cost(true, Blocks.AIR) + " surface blocks";
@@ -164,6 +178,9 @@ final class QuarryMaterialsScreen extends Screen {
         }
         if (previousReport == null) {
             return Component.literal("Survey the outline to calculate drops and finish materials.");
+        }
+        if (previousReport.surfaces().cannotSupport(quarry.finish()) || blockedFallingChoices) {
+            return Component.literal(QuarryMaterials.NO_SUPPORT_SPACE);
         }
         QuarryMaterials.Allocation allocation = quarry.allocation();
         if (allocation == null) {
@@ -192,7 +209,7 @@ final class QuarryMaterialsScreen extends Screen {
     @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (rows.size() > visibleRows && vertical != 0) {
-            offset = Math.clamp(offset + (vertical > 0 ? -1 : 1), 0, Math.max(0, rows.size() - visibleRows));
+            offset = Math.clamp((long) offset + (vertical > 0 ? -1 : 1), 0, Math.max(0, rows.size() - visibleRows));
             return true;
         }
         return super.mouseScrolled(x, y, horizontal, vertical);
