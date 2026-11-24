@@ -29,6 +29,7 @@ final class TransportBlockEntity extends BlockEntity {
     private static final int VISUAL_DELAY = 3;
     private static final int VISUAL_HISTORY = 8;
     private static final String VISUAL_TICK = "VisualTick";
+    private static final String READY_AT_KEY = "ReadyAt";
 
     record VisualSlot(ItemStack cargo, long readyAt, int routeFrom) {}
 
@@ -299,7 +300,7 @@ final class TransportBlockEntity extends BlockEntity {
             saveSplitter(tag, registries, state);
         } else {
             ContainerHelper.saveAllItems(tag, cargo, registries);
-            tag.putLongArray("ReadyAt", readyAt);
+            tag.putLongArray(READY_AT_KEY, readyAt);
         }
     }
 
@@ -318,7 +319,7 @@ final class TransportBlockEntity extends BlockEntity {
             localOverrides |= ((portOverrides >> (world * 2)) & 3) << (local * 2);
         }
         ContainerHelper.saveAllItems(tag, localCargo, registries);
-        tag.putLongArray("ReadyAt", localReadyAt);
+        tag.putLongArray(READY_AT_KEY, localReadyAt);
         tag.putIntArray("RouteFrom", localRoutes);
         tag.putInt("PortOverrides", localOverrides);
         tag.putInt("NextInput", SplitterBlock.localPort(state, nextInput));
@@ -330,7 +331,7 @@ final class TransportBlockEntity extends BlockEntity {
         super.loadAdditional(tag, registries);
         cargo.clear();
         BlockState state = getBlockState();
-        long[] savedReadyAt = tag.getLongArray("ReadyAt");
+        long[] savedReadyAt = tag.getLongArray(READY_AT_KEY);
         if (state.getBlock() instanceof SplitterBlock) {
             loadSplitter(tag, registries, state, savedReadyAt);
         } else {
