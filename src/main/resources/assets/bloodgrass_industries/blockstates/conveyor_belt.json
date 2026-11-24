@@ -1,0 +1,79 @@
+{
+  "variants": {
+    "facing=north,profile=flat": {
+      "model": "bloodgrass_industries:block/conveyor_belt_flat"
+    },
+    "facing=east,profile=flat": {
+      "model": "bloodgrass_industries:block/conveyor_belt_flat",
+      "y": 90
+    },
+    "facing=south,profile=flat": {
+      "model": "bloodgrass_industries:block/conveyor_belt_flat",
+      "y": 180
+    },
+    "facing=west,profile=flat": {
+      "model": "bloodgrass_industries:block/conveyor_belt_flat",
+      "y": 270
+    },
+    "facing=north,profile=left": {
+      "model": "bloodgrass_industries:block/conveyor_belt_left"
+    },
+    "facing=east,profile=left": {
+      "model": "bloodgrass_industries:block/conveyor_belt_left",
+      "y": 90
+    },
+    "facing=south,profile=left": {
+      "model": "bloodgrass_industries:block/conveyor_belt_left",
+      "y": 180
+    },
+    "facing=west,profile=left": {
+      "model": "bloodgrass_industries:block/conveyor_belt_left",
+      "y": 270
+    },
+    "facing=north,profile=right": {
+      "model": "bloodgrass_industries:block/conveyor_belt_right"
+    },
+    "facing=east,profile=right": {
+      "model": "bloodgrass_industries:block/conveyor_belt_right",
+      "y": 90
+    },
+    "facing=south,profile=right": {
+      "model": "bloodgrass_industries:block/conveyor_belt_right",
+      "y": 180
+    },
+    "facing=west,profile=right": {
+      "model": "bloodgrass_industries:block/conveyor_belt_right",
+      "y": 270
+    },
+    "facing=north,profile=up": {
+      "model": "bloodgrass_industries:block/conveyor_belt_up"
+    },
+    "facing=east,profile=up": {
+      "model": "bloodgrass_industries:block/conveyor_belt_up",
+      "y": 90
+    },
+    "facing=south,profile=up": {
+      "model": "bloodgrass_industries:block/conveyor_belt_up",
+      "y": 180
+    },
+    "facing=west,profile=up": {
+      "model": "bloodgrass_industries:block/conveyor_belt_up",
+      "y": 270
+    },
+    "facing=north,profile=down": {
+      "model": "bloodgrass_industries:block/conveyor_belt_down"
+    },
+    "facing=east,profile=down": {
+      "model": "bloodgrass_industries:block/conveyor_belt_down",
+      "y": 90
+    },
+    "facing=south,profile=down": {
+      "model": "bloodgrass_industries:block/conveyor_belt_down",
+      "y": 180
+    },
+    "facing=west,profile=down": {
+      "model": "bloodgrass_industries:block/conveyor_belt_down",
+      "y": 270
+    }
+  }
+}

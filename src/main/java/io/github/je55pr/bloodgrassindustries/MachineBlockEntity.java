@@ -28,19 +28,30 @@ abstract class MachineBlockEntity extends BlockEntity {
     abstract Component status(ServerLevel level);
 
     boolean insert(ServerLevel level, ItemStack stack, boolean creative) {
+        return insert(level, stack, creative, stack.getMaxStackSize(), false);
+    }
+
+    boolean insertFromTransport(ServerLevel level, ItemStack stack, boolean simulate) {
+        return insert(level, stack, true, Math.min(4, stack.getMaxStackSize()), simulate);
+    }
+
+    private boolean insert(ServerLevel level, ItemStack stack, boolean keepSource, int limit, boolean simulate) {
         if (!accepts(level, stack) || (!input.isEmpty() && !ItemStack.isSameItemSameComponents(input, stack))) {
             return false;
         }
-        int count = Math.min(stack.getCount(), stack.getMaxStackSize() - input.getCount());
+        int count = Math.min(stack.getCount(), limit - input.getCount());
         if (count <= 0) {
             return false;
+        }
+        if (simulate) {
+            return true;
         }
         if (input.isEmpty()) {
             input = stack.copyWithCount(count);
         } else {
             input.grow(count);
         }
-        if (!creative) {
+        if (!keepSource) {
             stack.shrink(count);
         }
         setChanged();

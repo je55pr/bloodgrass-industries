@@ -31,7 +31,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 
 final class MachineBlock extends Block implements EntityBlock {
     static final BooleanProperty LIT = BlockStateProperties.LIT;
-    private static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
+    static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
     private static final int WIDTH = 2;
     private static final int PART_COUNT = 12;
     // Existing single-block machines load with part 0. New machines start at 1.
@@ -144,7 +144,18 @@ final class MachineBlock extends Block implements EntityBlock {
     @Override
     public void playerDestroy(Level level, Player player, BlockPos pos, BlockState state, BlockEntity entity, ItemStack tool) {
         super.playerDestroy(level, player, pos, state, entity, tool);
-        player.getInventory().placeItemBackInInventory(new ItemStack(this));
+        popResource(level, pos, new ItemStack(this));
+    }
+
+    MachineBlockEntity transportInput(ServerLevel level, BlockPos pos, BlockState state, Direction side) {
+        Direction rear = state.getValue(FACING).getOpposite();
+        if (side != rear) {
+            return null;
+        }
+        BlockPos anchor = anchorPosition(pos, state);
+        BlockPos inlet = state.getValue(PART) == LEGACY ? anchor : anchor.relative(rear, depth - 1);
+        return pos.equals(inlet) && level.isLoaded(anchor) && level.getBlockEntity(anchor) instanceof MachineBlockEntity machine
+                ? machine : null;
     }
 
     BoundingBox bounds(BlockPos anchor, BlockState state) {

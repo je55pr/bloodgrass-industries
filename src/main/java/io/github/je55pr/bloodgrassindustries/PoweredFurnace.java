@@ -1,6 +1,7 @@
 package io.github.je55pr.bloodgrassindustries;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -22,7 +23,13 @@ final class PoweredFurnace extends MachineBlockEntity {
 
     @Override
     void tick(ServerLevel level) {
-        setLit(level, smelt(level));
+        Direction facing = getBlockState().getValue(MachineBlock.FACING);
+        TransportTransfer.Input belt = TransportTransfer.inputAt(level, worldPosition.relative(facing), facing.getOpposite());
+        if (belt != null && !output.isEmpty() && belt.offer(level, output)) {
+            output.shrink(1);
+            setChanged();
+        }
+        setLit(level, (belt == null || output.isEmpty()) && smelt(level));
     }
 
     private boolean smelt(ServerLevel level) {
