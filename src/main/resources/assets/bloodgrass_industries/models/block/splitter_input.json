@@ -1,0 +1,31 @@
+{
+  "textures": {
+    "port": "bloodgrass_industries:block/port_input"
+  },
+  "elements": [
+    {
+      "from": [
+        4,
+        2.02,
+        0
+      ],
+      "to": [
+        12,
+        2.02,
+        7
+      ],
+      "shade": false,
+      "faces": {
+        "up": {
+          "texture": "#port",
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ]
+        }
+      }
+    }
+  ]
+}

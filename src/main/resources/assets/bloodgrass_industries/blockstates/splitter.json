@@ -1,0 +1,79 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter"
+      }
+    },
+    {
+      "when": {
+        "north": "input"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_input"
+      }
+    },
+    {
+      "when": {
+        "east": "input"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_input",
+        "y": 90
+      }
+    },
+    {
+      "when": {
+        "south": "input"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_input",
+        "y": 180
+      }
+    },
+    {
+      "when": {
+        "west": "input"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_input",
+        "y": 270
+      }
+    },
+    {
+      "when": {
+        "north": "output"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_output"
+      }
+    },
+    {
+      "when": {
+        "east": "output"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_output",
+        "y": 90
+      }
+    },
+    {
+      "when": {
+        "south": "output"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_output",
+        "y": 180
+      }
+    },
+    {
+      "when": {
+        "west": "output"
+      },
+      "apply": {
+        "model": "bloodgrass_industries:block/splitter_output",
+        "y": 270
+      }
+    }
+  ]
+}
