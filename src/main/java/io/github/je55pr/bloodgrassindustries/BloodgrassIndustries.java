@@ -6,8 +6,11 @@ import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.PushReaction;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.registries.DeferredBlock;
@@ -47,17 +50,32 @@ public final class BloodgrassIndustries {
     private static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PoweredFurnace>> FURNACE_ENTITY =
             BLOCK_ENTITIES.register("powered_furnace", () -> BlockEntityType.Builder.of(PoweredFurnace::new, POWERED_FURNACE.get()).build(null));
 
+    static final DeferredBlock<BeltBlock> CONVEYOR_BELT = BLOCKS.register("conveyor_belt",
+            () -> new BeltBlock(BlockBehaviour.Properties.of().strength(0.6F).noOcclusion().pushReaction(PushReaction.BLOCK)));
+    static final DeferredBlock<SplitterBlock> SPLITTER = BLOCKS.register("splitter",
+            () -> new SplitterBlock(BlockBehaviour.Properties.of().strength(0.8F).noOcclusion().pushReaction(PushReaction.BLOCK)));
+    static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TransportBlockEntity>> TRANSPORT_ENTITY =
+            BLOCK_ENTITIES.register("transport", () -> BlockEntityType.Builder.of(TransportBlockEntity::new,
+                    CONVEYOR_BELT.get(), SPLITTER.get()).build(null));
+
     public BloodgrassIndustries(IEventBus modBus) {
         ITEMS.registerSimpleBlockItem(POWER_POLE);
         ITEMS.registerSimpleBlockItem(QUARRY);
         ITEMS.registerSimpleBlockItem(BURNER_GENERATOR);
         ITEMS.registerSimpleBlockItem(POWERED_FURNACE);
+        ITEMS.registerItem("conveyor_belt", properties -> new BeltItem(CONVEYOR_BELT.get(), properties));
+        ITEMS.registerSimpleBlockItem(SPLITTER);
+        modBus.addListener(BloodgrassIndustries::registerCapabilities);
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         BLOCK_ENTITIES.register(modBus);
         MENUS.register(modBus);
         modBus.addListener(QuarryPayload::register);
         modBus.addListener(BloodgrassIndustries::addCreativeItems);
+    }
+
+    private static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, TRANSPORT_ENTITY.get(), TransportBlockEntity::hopperInput);
     }
 
     static BlockEntityType<BurnerGenerator> burnerType() {
@@ -74,6 +92,8 @@ public final class BloodgrassIndustries {
             event.accept(BURNER_GENERATOR.get());
             event.accept(QUARRY.get());
             event.accept(POWERED_FURNACE.get());
+            event.accept(CONVEYOR_BELT.get());
+            event.accept(SPLITTER.get());
         }
     }
 }
