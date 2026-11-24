@@ -77,7 +77,13 @@ public final class QuarryRenderCut {
             long column = ChunkPos.asLong(pos.getX(), pos.getZ());
             int ceiling = skyCeilings.getOrDefault(column, Integer.MAX_VALUE);
             if (ceiling == Integer.MAX_VALUE) {
-                ceiling = QuarryPlan.skyBlocker(preview, pos, floor);
+                var chunk = level.getChunkSource().getChunk(SectionPos.blockToSectionCoord(pos.getX()),
+                        SectionPos.blockToSectionCoord(pos.getZ()), ChunkStatus.FULL, false);
+                if (chunk == null) {
+                    return false;
+                }
+                int surfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, pos.getX() & 15, pos.getZ() & 15);
+                ceiling = QuarryPlan.skyBlocker(preview, pos, floor, surfaceY);
                 skyCeilings.put(column, ceiling);
             }
             return pos.getY() > ceiling;

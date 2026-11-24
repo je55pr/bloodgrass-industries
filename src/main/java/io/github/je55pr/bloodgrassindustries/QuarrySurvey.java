@@ -55,6 +55,10 @@ public final class QuarrySurvey {
         player.getPersistentData().put(RETURN, tag);
         player.setGameMode(GameType.SPECTATOR);
         if (!player.isSpectator()) {
+            // Roll back this synchronous attempt if a listener substituted another mode.
+            if (!player.isCreative()) {
+                player.setGameMode(GameType.CREATIVE);
+            }
             restore(player);
             player.displayClientMessage(Component.literal("Spectator flight is unavailable."), true);
             return false;
@@ -72,9 +76,9 @@ public final class QuarrySurvey {
         if (player.hasDisconnected()) {
             return false;
         }
-        if (!player.isCreative()) {
+        if (player.isSpectator()) {
             player.setGameMode(GameType.CREATIVE);
-            if (!player.isCreative()) {
+            if (player.isSpectator()) {
                 player.displayClientMessage(Component.literal("Could not restore Creative mode. Your return point is saved."), true);
                 return false;
             }
@@ -86,8 +90,10 @@ public final class QuarrySurvey {
             player.teleportTo(level, tag.getDouble("X"), tag.getDouble("Y"), tag.getDouble("Z"), Set.of(),
                     tag.getFloat("Yaw"), tag.getFloat("Pitch"));
         }
-        player.getAbilities().flying = tag.getBoolean("Flying");
-        player.onUpdateAbilities();
+        if (player.isCreative()) {
+            player.getAbilities().flying = tag.getBoolean("Flying");
+            player.onUpdateAbilities();
+        }
         data.remove(RETURN);
         return true;
     }
