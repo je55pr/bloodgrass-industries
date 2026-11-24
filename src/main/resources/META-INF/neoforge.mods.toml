@@ -7,6 +7,9 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="Bloodgrass Industries"
 
+[[mixins]]
+config="bloodgrass_industries.client.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"

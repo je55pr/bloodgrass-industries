@@ -1,6 +1,7 @@
 package io.github.je55pr.bloodgrassindustries;
 
 import net.minecraft.core.registries.Registries;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -11,6 +12,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -23,6 +25,14 @@ public final class BloodgrassIndustries {
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(ID);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
             DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ID);
+    private static final DeferredRegister<MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU, ID);
+
+    static final DeferredBlock<QuarryBlock> QUARRY = BLOCKS.register("quarry",
+            () -> new QuarryBlock(BlockBehaviour.Properties.of().strength(1.5F)));
+    static final DeferredHolder<MenuType<?>, MenuType<QuarryMenu>> QUARRY_MENU = MENUS.register("quarry",
+            () -> IMenuTypeExtension.create(QuarryMenu::new));
+    static final DeferredHolder<BlockEntityType<?>, BlockEntityType<QuarryBlockEntity>> QUARRY_ENTITY =
+            BLOCK_ENTITIES.register("quarry", () -> BlockEntityType.Builder.of(QuarryBlockEntity::new, QUARRY.get()).build(null));
 
     static final DeferredBlock<PoleBlock> POWER_POLE = BLOCKS.register("power_pole",
             () -> new PoleBlock(BlockBehaviour.Properties.of().strength(0.4F).noOcclusion().noLootTable()));
@@ -50,6 +60,7 @@ public final class BloodgrassIndustries {
 
     public BloodgrassIndustries(IEventBus modBus) {
         ITEMS.registerSimpleBlockItem(POWER_POLE);
+        ITEMS.registerSimpleBlockItem(QUARRY);
         ITEMS.registerSimpleBlockItem(BURNER_GENERATOR);
         ITEMS.registerSimpleBlockItem(POWERED_FURNACE);
         ITEMS.registerItem("conveyor_belt", properties -> new BeltItem(CONVEYOR_BELT.get(), properties));
@@ -58,6 +69,8 @@ public final class BloodgrassIndustries {
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         BLOCK_ENTITIES.register(modBus);
+        MENUS.register(modBus);
+        modBus.addListener(QuarryPayload::register);
         modBus.addListener(BloodgrassIndustries::addCreativeItems);
     }
 
@@ -77,6 +90,7 @@ public final class BloodgrassIndustries {
         if (event.getTabKey().equals(CreativeModeTabs.FUNCTIONAL_BLOCKS)) {
             event.accept(POWER_POLE.get());
             event.accept(BURNER_GENERATOR.get());
+            event.accept(QUARRY.get());
             event.accept(POWERED_FURNACE.get());
             event.accept(CONVEYOR_BELT.get());
             event.accept(SPLITTER.get());
