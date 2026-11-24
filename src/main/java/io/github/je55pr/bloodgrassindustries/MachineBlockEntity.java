@@ -31,6 +31,19 @@ abstract class MachineBlockEntity extends BlockEntity {
         return insert(level, stack, creative, stack.getMaxStackSize(), false);
     }
 
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        var state = getBlockState();
+        if (level instanceof ServerLevel server && state.getBlock() instanceof MachineBlock machine) {
+            BlockPos inlet = machine.transportInlet(worldPosition, state);
+            TransportBlock.scheduleConnections(server, inlet);
+            if (!worldPosition.equals(inlet)) {
+                TransportBlock.scheduleConnections(server, worldPosition);
+            }
+        }
+    }
+
     boolean insertFromTransport(ServerLevel level, ItemStack stack, boolean simulate) {
         return insert(level, stack, true, Math.min(4, stack.getMaxStackSize()), simulate);
     }

@@ -28,8 +28,11 @@ final class TransportBlockEntity extends BlockEntity {
     private static final int NO_ROUTE = -1;
     private static final int VISUAL_DELAY = 3;
     private static final int VISUAL_HISTORY = 8;
+    private static final String VISUAL_TICK = "VisualTick";
 
-    record VisualFrame(long tick, List<ItemStack> cargo, long[] readyAt, int[] routeFrom) {}
+    record VisualSlot(ItemStack cargo, long readyAt, int routeFrom) {}
+
+    record VisualFrame(long tick, BlockState state, List<VisualSlot> slots) {}
     private final NonNullList<ItemStack> cargo = NonNullList.withSize(SLOT_COUNT, ItemStack.EMPTY);
     private final long[] readyAt = new long[SLOT_COUNT];
     private final int[] routeFrom = new int[SLOT_COUNT];
@@ -126,7 +129,7 @@ final class TransportBlockEntity extends BlockEntity {
         boolean changed = false;
         for (Direction side : Direction.Plane.HORIZONTAL) {
             int output = SplitterBlock.index(side);
-            if (routeFrom[output] != NO_ROUTE && ready(output, now) && isOutput(state, side)
+            if (ready(output, now) && isOutput(state, side)
                     && TransportTransfer.send(level, worldPosition.relative(side), side.getOpposite(), cargo.get(output))) {
                 cargo.set(output, ItemStack.EMPTY);
                 routeFrom[output] = NO_ROUTE;
@@ -141,7 +144,7 @@ final class TransportBlockEntity extends BlockEntity {
     private boolean startRoute(ServerLevel level, BlockState state, long now) {
         for (int offset = 0; offset < SLOT_COUNT; offset++) {
             int input = (nextInput + offset) % SLOT_COUNT;
-            if (!ready(input, now) || (routeFrom[input] != NO_ROUTE && isOutput(state, SplitterBlock.side(input)))) {
+            if (!ready(input, now)) {
                 continue;
             }
             ItemStack stack = cargo.get(input);
@@ -224,8 +227,10 @@ final class TransportBlockEntity extends BlockEntity {
     }
 
     VisualFrame visualFrame(double time) {
-        if (visualFrames == null) {
-            return new VisualFrame(level.getGameTime(), cargo, readyAt, routeFrom);
+        if (visualFrames == null || visualFrames.getLast().state() != getBlockState()) {
+            // An older frame follows the old belt shape. Start a new history for the current state.
+            visualFrames = null;
+            saveVisualFrame(Long.MIN_VALUE);
         }
         for (var frames = visualFrames.descendingIterator(); frames.hasNext();) {
             VisualFrame frame = frames.next();
@@ -237,11 +242,12 @@ final class TransportBlockEntity extends BlockEntity {
     }
 
     Vec3 renderPosition(VisualFrame frame, int slot, double time) {
-        BlockState state = getBlockState();
-        double moved = Mth.clamp(1 - (frame.readyAt[slot] - time) / MOVE_TICKS, 0, 1);
+        BlockState state = frame.state();
+        VisualSlot visual = frame.slots().get(slot);
+        double moved = Mth.clamp(1 - (visual.readyAt() - time) / MOVE_TICKS, 0, 1);
         if (state.getBlock() instanceof SplitterBlock) {
             Direction side = SplitterBlock.side(slot);
-            int from = frame.routeFrom[slot];
+            int from = visual.routeFrom();
             if (from == NO_ROUTE) {
                 return splitterPosition(side, Mth.lerp(moved, 0.5, 0.25));
             }
@@ -258,12 +264,17 @@ final class TransportBlockEntity extends BlockEntity {
     }
 
     private void saveVisualFrame(long tick) {
-        if (visualFrames == null) {
+        BlockState state = getBlockState();
+        if (visualFrames == null || visualFrames.getLast().state() != state) {
             visualFrames = new ArrayDeque<>(VISUAL_HISTORY);
         } else if (visualFrames.getLast().tick == tick) {
             visualFrames.removeLast();
         }
-        visualFrames.addLast(new VisualFrame(tick, List.copyOf(cargo), readyAt.clone(), routeFrom.clone()));
+        VisualSlot[] slots = new VisualSlot[SLOT_COUNT];
+        for (int slot = 0; slot < SLOT_COUNT; slot++) {
+            slots[slot] = new VisualSlot(cargo.get(slot).copy(), readyAt[slot], routeFrom[slot]);
+        }
+        visualFrames.addLast(new VisualFrame(tick, state, List.of(slots)));
         if (visualFrames.size() > VISUAL_HISTORY) {
             visualFrames.removeFirst();
         }
@@ -283,34 +294,76 @@ final class TransportBlockEntity extends BlockEntity {
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        ContainerHelper.saveAllItems(tag, cargo, registries);
-        tag.putLongArray("ReadyAt", readyAt);
-        if (getBlockState().getBlock() instanceof SplitterBlock) {
-            tag.putIntArray("RouteFrom", routeFrom);
-            tag.putInt("PortOverrides", portOverrides);
+        BlockState state = getBlockState();
+        if (state.getBlock() instanceof SplitterBlock) {
+            saveSplitter(tag, registries, state);
+        } else {
+            ContainerHelper.saveAllItems(tag, cargo, registries);
+            tag.putLongArray("ReadyAt", readyAt);
         }
-        tag.putInt("NextInput", nextInput);
-        tag.putInt("NextOutput", nextOutput);
+    }
+
+    private void saveSplitter(CompoundTag tag, HolderLookup.Provider registries, BlockState state) {
+        NonNullList<ItemStack> localCargo = NonNullList.withSize(SLOT_COUNT, ItemStack.EMPTY);
+        long[] localReadyAt = new long[SLOT_COUNT];
+        int[] localRoutes = new int[SLOT_COUNT];
+        int localOverrides = 0;
+        for (int local = 0; local < SLOT_COUNT; local++) {
+            int world = SplitterBlock.worldPort(state, local);
+            localCargo.set(local, cargo.get(world));
+            localReadyAt[local] = readyAt[world];
+            int from = routeFrom[world];
+            localRoutes[local] = from == NO_ROUTE ? NO_ROUTE
+                    : SplitterBlock.localPort(state, from % SLOT_COUNT) + routeStage(from);
+            localOverrides |= ((portOverrides >> (world * 2)) & 3) << (local * 2);
+        }
+        ContainerHelper.saveAllItems(tag, localCargo, registries);
+        tag.putLongArray("ReadyAt", localReadyAt);
+        tag.putIntArray("RouteFrom", localRoutes);
+        tag.putInt("PortOverrides", localOverrides);
+        tag.putInt("NextInput", SplitterBlock.localPort(state, nextInput));
+        tag.putInt("NextOutput", SplitterBlock.localPort(state, nextOutput));
     }
 
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
         cargo.clear();
-        ContainerHelper.loadAllItems(tag, cargo, registries);
-        long[] saved = tag.getLongArray("ReadyAt");
-        int[] routes = tag.getIntArray("RouteFrom");
-        portOverrides = tag.getInt("PortOverrides");
-        for (int i = 0; i < SLOT_COUNT; i++) {
-            readyAt[i] = i < saved.length ? saved[i] : 0;
-            int from = i < routes.length ? routes[i] : NO_ROUTE;
-            routeFrom[i] = from >= 0 && from < 2 * SLOT_COUNT ? from : NO_ROUTE;
+        BlockState state = getBlockState();
+        long[] savedReadyAt = tag.getLongArray("ReadyAt");
+        if (state.getBlock() instanceof SplitterBlock) {
+            loadSplitter(tag, registries, state, savedReadyAt);
+        } else {
+            ContainerHelper.loadAllItems(tag, cargo, registries);
+            Arrays.fill(readyAt, 0);
+            System.arraycopy(savedReadyAt, 0, readyAt, 0, Math.min(savedReadyAt.length, SLOT_COUNT));
         }
-        nextInput = Math.floorMod(tag.getInt("NextInput"), SLOT_COUNT);
-        nextOutput = Math.floorMod(tag.getInt("NextOutput"), SLOT_COUNT);
-        if (tag.contains("VisualTick", Tag.TAG_LONG)) {
-            saveVisualFrame(tag.getLong("VisualTick"));
+        if (tag.contains(VISUAL_TICK, Tag.TAG_LONG)) {
+            saveVisualFrame(tag.getLong(VISUAL_TICK));
         }
+    }
+
+    private void loadSplitter(CompoundTag tag, HolderLookup.Provider registries, BlockState state, long[] savedReadyAt) {
+        NonNullList<ItemStack> localCargo = NonNullList.withSize(SLOT_COUNT, ItemStack.EMPTY);
+        ContainerHelper.loadAllItems(tag, localCargo, registries);
+        int[] localRoutes = tag.getIntArray("RouteFrom");
+        int localOverrides = tag.getInt("PortOverrides");
+        portOverrides = 0;
+        for (int local = 0; local < SLOT_COUNT; local++) {
+            int world = SplitterBlock.worldPort(state, local);
+            cargo.set(world, localCargo.get(local));
+            readyAt[world] = local < savedReadyAt.length ? savedReadyAt[local] : 0;
+            int from = local < localRoutes.length ? localRoutes[local] : NO_ROUTE;
+            routeFrom[world] = from >= 0 && from < 2 * SLOT_COUNT
+                    ? SplitterBlock.worldPort(state, from % SLOT_COUNT) + routeStage(from) : NO_ROUTE;
+            portOverrides |= ((localOverrides >> (local * 2)) & 3) << (world * 2);
+        }
+        nextInput = SplitterBlock.worldPort(state, Math.floorMod(tag.getInt("NextInput"), SLOT_COUNT));
+        nextOutput = SplitterBlock.worldPort(state, Math.floorMod(tag.getInt("NextOutput"), SLOT_COUNT));
+    }
+
+    private static int routeStage(int route) {
+        return route >= SLOT_COUNT ? SLOT_COUNT : 0;
     }
 
     @Override
@@ -318,7 +371,7 @@ final class TransportBlockEntity extends BlockEntity {
         CompoundTag tag = saveWithoutMetadata(registries);
         // Chunk updates can be sent on a later tick than the move they describe.
         if (level != null) {
-            tag.putLong("VisualTick", lastVisualChange == Long.MIN_VALUE ? level.getGameTime() : lastVisualChange);
+            tag.putLong(VISUAL_TICK, lastVisualChange == Long.MIN_VALUE ? level.getGameTime() : lastVisualChange);
         }
         return tag;
     }

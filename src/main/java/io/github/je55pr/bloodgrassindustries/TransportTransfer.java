@@ -85,7 +85,8 @@ final class TransportTransfer {
 
     private static boolean beltPointsTo(Level level, BlockPos pos, BlockPos target) {
         BlockState state = level.getBlockState(pos);
-        return state.getBlock() instanceof BeltBlock && BeltBlock.outputPoint(pos, state).equals(target);
+        return state.getBlock() instanceof BeltBlock && BeltBlock.outputPoint(pos, state).equals(target)
+                && (!state.getValue(BeltBlock.PROFILE).ramp() || BeltBlock.hasHeadroom(level, pos));
     }
 
     static SplitterBlock.Port splitterPort(ServerLevel level, BlockPos splitter, Direction side) {

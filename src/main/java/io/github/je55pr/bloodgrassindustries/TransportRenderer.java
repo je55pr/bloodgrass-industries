@@ -35,7 +35,7 @@ public final class TransportRenderer implements BlockEntityRenderer<TransportBlo
         double time = transport.visualTime(partialTick);
         TransportBlockEntity.VisualFrame frame = transport.visualFrame(time);
         for (int slot = 0; slot < TransportBlockEntity.SLOT_COUNT; slot++) {
-            ItemStack stack = frame.cargo().get(slot);
+            ItemStack stack = frame.slots().get(slot).cargo();
             if (stack.isEmpty()) {
                 continue;
             }
@@ -54,6 +54,6 @@ public final class TransportRenderer implements BlockEntityRenderer<TransportBlo
 
     @Override
     public AABB getRenderBoundingBox(TransportBlockEntity transport) {
-        return new AABB(transport.getBlockPos()).expandTowards(0, 0.5, 0);
+        return new AABB(transport.getBlockPos()).inflate(0.5);
     }
 }

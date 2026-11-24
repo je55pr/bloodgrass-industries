@@ -94,33 +94,40 @@ final class BeltItem extends BlockItem {
             return null;
         }
         // Only examine cells the crosshair ray reaches before it hits solid geometry.
-        return BlockGetter.traverseBlocks(eye, end, player, (builder, aimedCell) -> {
-            Level level = builder.level();
-            AABB aimArea = new AABB(aimedCell).deflate(0.12);
-            if (aimArea.contains(eye) || aimArea.clip(eye, end).isEmpty()
-                    || !available(level, aimedCell) || !level.getBlockState(aimedCell).canBeReplaced()) {
-                return null;
-            }
-            if (builder.isShiftKeyDown()) {
-                BlockPos lower = aimedCell.below();
-                Direction climb = outletAt(level, lower);
-                Direction descent = outletAt(level, aimedCell.above());
-                if (climb == null && descent != null) {
-                    return new ExtensionContext(builder, hand, aimedCell, descent, BeltBlock.Profile.DOWN);
-                }
-                if (climb != null && descent == null) {
-                    return new ExtensionContext(builder, hand, lower, climb, BeltBlock.Profile.UP);
-                }
-            } else {
-                Direction outlet = outletAt(level, aimedCell);
-                if (outlet != null && !isRampHeadroom(level, aimedCell)) {
-                    Direction look = builder.getDirection();
-                    Direction facing = look == outlet.getOpposite() ? outlet : look;
-                    return new ExtensionContext(builder, hand, aimedCell, facing, null);
-                }
-            }
+        return BlockGetter.traverseBlocks(eye, end, player,
+                (builder, aimedCell) -> extensionAt(builder, hand, eye, end, aimedCell), ignored -> null);
+    }
+
+    private static ExtensionContext extensionAt(Player player, InteractionHand hand, Vec3 eye, Vec3 end, BlockPos cell) {
+        Level level = player.level();
+        AABB aimArea = new AABB(cell).deflate(0.12);
+        if (aimArea.contains(eye) || aimArea.clip(eye, end).isEmpty()
+                || !available(level, cell) || !level.getBlockState(cell).canBeReplaced()) {
             return null;
-        }, ignored -> null);
+        }
+        if (player.isShiftKeyDown()) {
+            return rampExtension(player, hand, cell);
+        }
+        Direction outlet = outletAt(level, cell);
+        if (outlet == null || isRampHeadroom(level, cell)) {
+            return null;
+        }
+        Direction look = player.getDirection();
+        Direction facing = look == outlet.getOpposite() ? outlet : look;
+        return new ExtensionContext(player, hand, cell, facing, null);
+    }
+
+    private static ExtensionContext rampExtension(Player player, InteractionHand hand, BlockPos cell) {
+        BlockPos lower = cell.below();
+        Direction climb = outletAt(player.level(), lower);
+        Direction descent = outletAt(player.level(), cell.above());
+        if (climb != null && descent == null) {
+            return new ExtensionContext(player, hand, lower, climb, BeltBlock.Profile.UP);
+        }
+        if (descent != null && climb == null) {
+            return new ExtensionContext(player, hand, cell, descent, BeltBlock.Profile.DOWN);
+        }
+        return null;
     }
 
     private static Direction outletAt(Level level, BlockPos target) {
@@ -133,7 +140,8 @@ final class BeltItem extends BlockItem {
             if (!level.isLoaded(neighbor)) {
                 continue;
             }
-            if (TransportTransfer.hasBeltOutlet(level, neighbor, target)) {
+            if (TransportTransfer.hasBeltOutlet(level, neighbor, target)
+                    || TransportTransfer.splitterCanFeed(level, target, side)) {
                 if (facing != null) {
                     return null;
                 }

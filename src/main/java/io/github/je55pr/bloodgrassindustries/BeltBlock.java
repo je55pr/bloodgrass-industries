@@ -101,22 +101,26 @@ final class BeltBlock extends TransportBlock {
         Direction left = facing.getCounterClockWise();
         Direction right = facing.getClockWise();
         Profile current = state.getValue(PROFILE);
-        if (!level.isLoaded(pos.relative(inputSide(state)))) {
-            return state;
-        }
         if (TransportTransfer.hasDirectedPredecessor(level, pos, rear)) {
             return state.setValue(PROFILE, Profile.FLAT);
         }
         boolean fromLeft = TransportTransfer.hasDirectedPredecessor(level, pos, left);
         boolean fromRight = TransportTransfer.hasDirectedPredecessor(level, pos, right);
-        if (!fromLeft && !fromRight && !TransportTransfer.splitterCanFeed(level, pos, rear)) {
+        if (!fromLeft && !fromRight) {
+            if (TransportTransfer.splitterCanFeed(level, pos, rear)) {
+                return state.setValue(PROFILE, Profile.FLAT);
+            }
             fromLeft = TransportTransfer.splitterCanFeed(level, pos, left);
             fromRight = TransportTransfer.splitterCanFeed(level, pos, right);
         }
-        if (fromLeft && fromRight) {
-            return current == Profile.RIGHT ? state : state.setValue(PROFILE, Profile.LEFT);
+        if (fromLeft && (!fromRight || current != Profile.RIGHT)) {
+            return state.setValue(PROFILE, Profile.LEFT);
         }
-        return state.setValue(PROFILE, fromLeft ? Profile.LEFT : fromRight ? Profile.RIGHT : Profile.FLAT);
+        if (fromRight) {
+            return state.setValue(PROFILE, Profile.RIGHT);
+        }
+        // Keep the saved connection while its inlet is unknown and there is no known feeder.
+        return level.isLoaded(pos.relative(inputSide(state))) ? state.setValue(PROFILE, Profile.FLAT) : state;
     }
 
     @Override

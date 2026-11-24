@@ -51,10 +51,9 @@ abstract class TransportBlock extends Block implements EntityBlock {
             return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
         }
         if (level instanceof ServerLevel server && level.getBlockEntity(pos) instanceof TransportBlockEntity transport
-                && transport.offer(stack, manualInput(state, pos, hit), server.getGameTime())) {
-            if (!player.getAbilities().instabuild) {
-                stack.shrink(1);
-            }
+                && transport.offer(stack, manualInput(state, pos, hit), server.getGameTime())
+                && !player.getAbilities().instabuild) {
+            stack.shrink(1);
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide);
     }
@@ -99,7 +98,11 @@ abstract class TransportBlock extends Block implements EntityBlock {
     protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighbor, BlockPos neighborPos,
                                    boolean moved) {
         if (level instanceof ServerLevel server) {
-            server.scheduleTick(pos, this, 1);
+            if (state.getBlock() instanceof BeltBlock && state.getValue(BeltBlock.PROFILE).ramp() && neighborPos.equals(pos.above())) {
+                scheduleConnections(server, pos);
+            } else {
+                server.scheduleTick(pos, this, 1);
+            }
         }
     }
 

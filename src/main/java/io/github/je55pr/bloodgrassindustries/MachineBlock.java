@@ -153,9 +153,12 @@ final class MachineBlock extends Block implements EntityBlock {
             return null;
         }
         BlockPos anchor = anchorPosition(pos, state);
-        BlockPos inlet = state.getValue(PART) == LEGACY ? anchor : anchor.relative(rear, depth - 1);
-        return pos.equals(inlet) && level.isLoaded(anchor) && level.getBlockEntity(anchor) instanceof MachineBlockEntity machine
-                ? machine : null;
+        return pos.equals(transportInlet(anchor, state)) && level.isLoaded(anchor)
+                && level.getBlockEntity(anchor) instanceof MachineBlockEntity machine ? machine : null;
+    }
+
+    BlockPos transportInlet(BlockPos anchor, BlockState state) {
+        return state.getValue(PART) == LEGACY ? anchor : anchor.relative(state.getValue(FACING).getOpposite(), depth - 1);
     }
 
     BoundingBox bounds(BlockPos anchor, BlockState state) {

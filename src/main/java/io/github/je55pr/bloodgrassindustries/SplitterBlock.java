@@ -1,5 +1,6 @@
 package io.github.je55pr.bloodgrassindustries;
 
+import java.util.function.UnaryOperator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -15,6 +16,7 @@ import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -25,6 +27,8 @@ final class SplitterBlock extends TransportBlock {
     private static final EnumProperty<Port> EAST = EnumProperty.create("east", Port.class);
     private static final EnumProperty<Port> SOUTH = EnumProperty.create("south", Port.class);
     private static final EnumProperty<Port> WEST = EnumProperty.create("west", Port.class);
+    private static final int PORT_COUNT = 4;
+    private static final IntegerProperty PORT_ORIENTATION = IntegerProperty.create("port_orientation", 0, 2 * PORT_COUNT - 1);
     private static final VoxelShape SHAPE = box(0, 0, 0, 16, 2, 16);
 
     enum Port implements StringRepresentable {
@@ -44,12 +48,12 @@ final class SplitterBlock extends TransportBlock {
 
     SplitterBlock(Properties properties) {
         super(properties);
-        registerDefaultState(stateDefinition.any());
+        registerDefaultState(stateDefinition.any().setValue(PORT_ORIENTATION, 0));
     }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(NORTH, EAST, SOUTH, WEST);
+        builder.add(NORTH, EAST, SOUTH, WEST, PORT_ORIENTATION);
     }
 
     @Override
@@ -148,21 +152,38 @@ final class SplitterBlock extends TransportBlock {
         return SHAPE;
     }
 
+    // Structure templates transform the blockstate before reading the original block entity tag.
+    // Persist port data relative to this orientation so it follows the transformed faces.
+    static int worldPort(BlockState state, int localPort) {
+        int orientation = state.getValue(PORT_ORIENTATION);
+        int rotation = orientation % PORT_COUNT;
+        return Math.floorMod(rotation + (orientation < PORT_COUNT ? localPort : -localPort), PORT_COUNT);
+    }
+
+    static int localPort(BlockState state, int worldPort) {
+        int orientation = state.getValue(PORT_ORIENTATION);
+        int offset = worldPort - orientation % PORT_COUNT;
+        return Math.floorMod(orientation < PORT_COUNT ? offset : -offset, PORT_COUNT);
+    }
+
     @Override
     protected BlockState rotate(BlockState state, Rotation rotation) {
-        BlockState rotated = state;
-        for (Direction side : Direction.Plane.HORIZONTAL) {
-            rotated = withPort(rotated, rotation.rotate(side), port(state, side));
-        }
-        return rotated;
+        return transformPorts(state, rotation::rotate);
     }
 
     @Override
     protected BlockState mirror(BlockState state, Mirror mirror) {
-        BlockState mirrored = state;
+        return transformPorts(state, mirror::mirror);
+    }
+
+    private static BlockState transformPorts(BlockState state, UnaryOperator<Direction> transform) {
+        BlockState transformed = state;
         for (Direction side : Direction.Plane.HORIZONTAL) {
-            mirrored = withPort(mirrored, mirror.mirror(side), port(state, side));
+            transformed = withPort(transformed, transform.apply(side), port(state, side));
         }
-        return mirrored;
+        int north = index(transform.apply(side(worldPort(state, 0))));
+        int east = index(transform.apply(side(worldPort(state, 1))));
+        int mirrored = east == (north + 1) % PORT_COUNT ? 0 : PORT_COUNT;
+        return transformed.setValue(PORT_ORIENTATION, north + mirrored);
     }
 }
